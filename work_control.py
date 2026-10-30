@@ -78,7 +78,7 @@ class WorkControl:
                 elif p.get('workState', {}).get('phase') == 'attention' and p['workState'].get('outcome') in ('failed', 'interrupted'):
                     p['workState']['phase'] = 'idle'
                     p['workPaused'] = True
-            elif action in ('release', 'assess', 'finish-team', 'health'):
+            elif action in ('release', 'assess', 'finish-team', 'advisors', 'health'):
                 if action != 'health' and (busy(p) or p.get('wrapRequested') or any(i['state'] in ('pending','dispatching') for i in p.get('contentQueue', []))):
                     raise ValueError('Finish current work and queued additions before starting this operation.')
                 if action == 'health':
@@ -86,7 +86,7 @@ class WorkControl:
                     # Network check runs outside the mutation lock below.
                 else:
                     from project_ops import ProjectOps
-                    ProjectOps(self.store).folder(p)
+                    if action!='advisors':ProjectOps(self.store).folder(p)
                     p['workState'] = dict(phase='operation', operation=action, id=str(uuid.uuid4()), startedAt=self.store.now(), detail='Starting '+action)
                     p['suggestion'] = None
                     self.store.mark_reviewed(p)
@@ -98,7 +98,7 @@ class WorkControl:
             with self.store.MUTATION_LOCK:
                 p = self.project(identity)
                 self._save_health(p,result)
-        elif action in ('release', 'assess', 'finish-team'):
+        elif action in ('release', 'assess', 'finish-team', 'advisors'):
             threading.Thread(target=self._operation, args=(identity, action, p['workState']['id']), daemon=True).start()
         return p
 
@@ -115,17 +115,20 @@ class WorkControl:
             if action == 'release':
                 from project_ops import ProjectOps
                 result = ProjectOps(self.store).release(p, progress)
+            elif action=='advisors':
+                from advisor_panel import AdvisorPanel
+                result=AdvisorPanel(self.store).run(p,progress=progress,research=True)
             else:
                 from finish_agents import AuditEngine
                 result = AuditEngine(self.store).run(p, team=action=='finish-team', progress=progress)
             with self.store.MUTATION_LOCK:
                 p = self.project(identity)
-                p['releaseState' if action == 'release' else 'auditReport'] = result
+                p['releaseState' if action == 'release' else 'advisorReport' if action=='advisors' else 'auditReport'] = result
                 if action != 'release':
                     directory = self.store.DATA / 'reports'; directory.mkdir(parents=True, exist_ok=True)
                     (directory/(operation_id+'.json')).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
                     (directory/(operation_id+'.md')).write_text(result.get('markdown', result.get('summary','')), encoding='utf-8')
-                p['workState'] = dict(phase='idle', operation=action, completedAt=self.store.now(), detail='GitHub release published.' if action=='release' else 'Review finished. See the audit report.')
+                p['workState'] = dict(phase='idle', operation=action, completedAt=self.store.now(), detail='GitHub release published.' if action=='release' else 'Advisor panel finished. See the advisor report.' if action=='advisors' else 'Review finished. See the audit report.')
                 self.store.event(p, self.store.now(), p['workState']['detail'], 'Project Desk', operation_id)
                 if p.get('workPaused'): p['status']='Paused'
                 self.store.save(p)

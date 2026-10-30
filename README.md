@@ -1,10 +1,28 @@
 # Codex Project Desk
 
-Project Desk version 2.0.2 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
+Project Desk version 2.1.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
 
 ## Work, queue, and finishing controls
 
-Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. Version 2.0.2 repairs old stuck Unreviewed labels once using saved review/work evidence; untouched imports stay Unreviewed.
+Panel of advisors runs three independent read-only reviews: a code advisor grades
+implementation and feasibility; a social director grades whether a defined group
+would use and return to the project; a marketing advisor grades positioning,
+differentiation, reach, and cost/value. Grades apply separately to each remit.
+Advisors use live web research where useful, cite sources, distinguish evidence
+from assumptions, and consider unconventional/niche/internal-use ideas fairly.
+They are instructed to be candid and specific, without flattery or filler.
+
+Each advisor first gives a grade and a continue/pivot/shelve/insufficient-evidence
+verdict. Only after those independent verdicts are collected can supported fix
+prompts be generated. If all three give grounded shelving verdicts, that second
+phase is skipped entirely: the report contains reasons to shelve and no fix
+prompts. Missing/failed/unsupported reviews cannot count as negative votes.
+The report is saved separately from the Finish agent team audit, includes
+copyable prompts when appropriate, and never applies fixes or archives the
+project automatically. It is a bounded evidence-based assessment, not proof of
+future adoption or revenue. Report files are saved in the local data/reports folder.
+
+Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. Version 2.1.0 repairs old stuck Unreviewed labels once using saved review/work evidence; untouched imports stay Unreviewed.
 
 Sending a reviewed next action immediately reserves the project as working. A delivery receipt means the message arrived; completion waits for the exact Codex turn to report completed. While working, project edits and new suggestions are held. Add content saves durable FIFO additions, automatically delivered to the same local chat after completion. The saved final answer updates the card and activity. When the queue is empty, an agent recommends a new step for review; suggestions are never executed automatically. A finished turn does not mean the whole project is complete.
 
