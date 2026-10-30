@@ -96,7 +96,8 @@ class WorkControl:
             from project_ops import ProjectOps
             result = ProjectOps(self.store).health(p)
             with self.store.MUTATION_LOCK:
-                p = self.project(identity); p['websiteHealth'] = result; self.store.save(p)
+                p = self.project(identity)
+                self._save_health(p,result)
         elif action in ('release', 'assess', 'finish-team'):
             threading.Thread(target=self._operation, args=(identity, action, p['workState']['id']), daemon=True).start()
         return p
@@ -258,10 +259,17 @@ class WorkControl:
         from project_ops import ProjectOps
         try:
             for p in self.store.load_projects():
-                if p.get('kind')=='Website' and p.get('websiteUrl'):
+                if p.get('kind')=='Website' or p.get('websiteUrl'):
                     try:
                         result=ProjectOps(self.store).health(p)
                         with self.store.MUTATION_LOCK:
-                            latest=self.project(p['id']);latest['websiteHealth']=result;self.store.save(latest)
+                            latest=self.project(p['id']);self._save_health(latest,result)
                     except Exception:pass
         finally:self.health_running=False
+
+    def _save_health(self,p,result):
+        if result.get('detected') and result.get('url') and not p.get('websiteUrl'):
+            p['websiteUrl']=result['url'];p['websiteUrlSource']=result.get('urlSource')
+        # Do not let a slow check overwrite a different URL saved in another window.
+        if p.get('websiteUrl') and result.get('url')!=p['websiteUrl']:return
+        p['websiteHealth']=result;self.store.save(p)

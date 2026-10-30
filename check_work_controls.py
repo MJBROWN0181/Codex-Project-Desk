@@ -50,9 +50,20 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('#work-report-body')).to_contain_text('Fixture <script> finding')
             expect(page.locator('#work-fix-prompt')).to_have_value(report['fixPrompt'])
             page.locator('#work-report').get_by_role('button',name='Close report').click()
-            with patch('project_ops.ProjectOps.health',return_value=dict(state='up',statusCode=200,checkedAt=server.now())):
+            # The address exists in project metadata, not the separate tracker field.
+            fixture=Path(directory)/'site';fixture.mkdir();(fixture/'index.html').write_text('<link rel="canonical" href="https://fixture.example/">')
+            p=service.project(a['id']);p['websiteUrl']='';p['path']=str(fixture);server.save(p);page.evaluate('load()')
+            class SiteResponse:
+                status=200
+                def __enter__(self):return self
+                def __exit__(self,*args):pass
+            opener=MagicMock();opener.open.return_value=SiteResponse()
+            with patch('project_ops.build_opener',return_value=opener):
                 card.get_by_role('button',name='Check site',exact=True).click()
                 expect(card.locator('.website-health')).to_contain_text('Up')
+                expect(card.locator('.checked-site-url')).to_have_text('https://fixture.example/')
+            assert service.project(a['id'])['websiteUrl']=='https://fixture.example/'
+            assert opener.open.call_args.args[0].full_url=='https://fixture.example/'
             page.set_viewport_size({'width':390,'height':900})
             assert not page.evaluate('document.documentElement.scrollWidth>innerWidth'),'Mobile layout overflows'
             Path('output').mkdir(exist_ok=True);page.screenshot(path='output/work-controls-mobile.png',full_page=True)

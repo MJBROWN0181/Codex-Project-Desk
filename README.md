@@ -1,10 +1,10 @@
 # Codex Project Desk
 
-Project Desk version 2.0.1 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
+Project Desk version 2.0.2 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
 
 ## Work, queue, and finishing controls
 
-Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. Version 2.0.1 repairs old stuck Unreviewed labels once using saved review/work evidence; untouched imports stay Unreviewed.
+Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. Version 2.0.2 repairs old stuck Unreviewed labels once using saved review/work evidence; untouched imports stay Unreviewed.
 
 Sending a reviewed next action immediately reserves the project as working. A delivery receipt means the message arrived; completion waits for the exact Codex turn to report completed. While working, project edits and new suggestions are held. Add content saves durable FIFO additions, automatically delivered to the same local chat after completion. The saved final answer updates the card and activity. When the queue is empty, an agent recommends a new step for review; suggestions are never executed automatically. A finished turn does not mean the whole project is complete.
 
@@ -16,7 +16,7 @@ Am I done? inspects the actual folder, applies focused required fixes, and revie
 
 Grades: A ready to use; B almost done and usable; C minor fixes or required features remain; D work in progress and not ready for real use; F not working. A requires supporting checks and no material gaps. Optional improvements alone do not prevent an A. Automated review is bounded to one repair/recheck cycle; unresolved findings stay in the report.
 
-Website projects can have a configured HTTP(S) URL. Up/Down shows the latest bounded HTTP check with its timestamp and response code; checks run roughly once per minute and through Check site. This is a point-in-time check from this computer, not a global uptime guarantee.
+Website projects can have a configured HTTP(S) URL. If it is empty, Check site detects declared website metadata from the project, including CNAME, a homepage canonical/og:url tag, package homepage, a labelled README website link, or saved GitHub homepage metadata. It saves an unambiguous detected address into Website URL; an explicit address always wins. Unrelated documentation and repository links are not treated as the website. Up/Down shows the checked address, timestamp, and response code; checks run roughly once per minute and through Check site. This is a point-in-time check from this computer, not a global uptime guarantee.
 
 ## Drafts, focus, and latest replies
 

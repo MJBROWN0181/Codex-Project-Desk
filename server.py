@@ -242,6 +242,7 @@ def merge_github(identity, repo, details, issues, commits):
         raise ValueError('The repository changed during refresh. Refresh the current repository again.')
     p['githubCheckedAt'] = now()
     p['githubUrl'] = details['html_url']
+    p['githubHomepage'] = details.get('homepage') or ''
     if commits:
         commit = commits[0]
         event(p, commit['commit']['committer']['date'], commit['commit']['message'].splitlines()[0],
@@ -268,6 +269,7 @@ def update(payload):
     if busy(p) and set(payload)-{'id','pinned'}:
         raise ValueError('This project is working. Add content to its queue instead of changing project details.')
     previous_action=p.get('nextAction','')
+    previous_site=p.get('websiteUrl','')
     previous_status=p['status']
     if 'pinned' in payload:
         if not isinstance(payload['pinned'],bool):raise ValueError('Pinned must be true or false.')
@@ -278,6 +280,7 @@ def update(payload):
                 raise ValueError('Project fields must be text of up to 3,000 characters.')
             p[key] = payload[key].strip()
     if p['nextAction']!=previous_action:p.pop('nextActionReason',None)
+    if p.get('websiteUrl','')!=previous_site:p.pop('websiteUrlSource',None)
     if not p['name'] or p['status'] not in STATUSES or p['kind'] not in KINDS:
         raise ValueError('Choose a project name, valid type, and status.')
     if p['kind'] == 'Documents Render' and not p.get('agency'):

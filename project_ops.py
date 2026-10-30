@@ -5,6 +5,7 @@ should serialize it with other project mutations. Commands never use a shell.
 """
 from copy import deepcopy
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,28 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+def _site_url(value):
+    if not isinstance(value, str):return None
+    value=value.strip()
+    try:
+        parsed=urlsplit(value)
+        if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password:return None
+        parsed.port
+    except ValueError:return None
+    return value
+
+
+class _SiteMetadata(HTMLParser):
+    def __init__(self):
+        super().__init__();self.canonical=[];self.social=[]
+    def handle_starttag(self,tag,attrs):
+        attrs=dict(attrs)
+        if tag=='link' and 'canonical' in attrs.get('rel','').lower().split():
+            self.canonical.append(attrs.get('href'))
+        if tag=='meta' and attrs.get('property','').lower()=='og:url':
+            self.social.append(attrs.get('content'))
 
 
 class ProjectOperationError(RuntimeError):
@@ -133,13 +156,13 @@ class ProjectOps:
         return path
 
     def health(self, project):
-        url = str(project.get('websiteUrl') or '').strip()
+        resolved=self.website(project)
+        url = resolved.get('url','')
         result = {'url': url, 'checkedAt': datetime.now(timezone.utc).isoformat(),
-                  'state': 'not-configured', 'statusCode': None, 'responseMs': None}
+                  'state': 'not-configured', 'statusCode': None, 'responseMs': None, **resolved}
         if not url:
             return result
-        parsed = urlsplit(url)
-        if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
+        if not _site_url(url):
             return dict(result, state='unknown', detail='Enter a complete HTTP or HTTPS website URL without credentials.')
         started = time.monotonic()
         try:
@@ -161,6 +184,54 @@ class ProjectOps:
             result.update(state='down', detail=str(exc)[:300])
         result['responseMs'] = round((time.monotonic() - started) * 1000)
         return result
+
+    def website(self, project):
+        """Read declared site metadata, never guess from arbitrary source links.
+
+        A manually configured URL wins. Discovery is bounded to small known files,
+        stays within the project, and never runs project code or reads env files.
+        """
+        explicit=str(project.get('websiteUrl') or '').strip()
+        if explicit:return dict(url=explicit,urlSource=project.get('websiteUrlSource') or 'Project website URL')
+        def choose(values,source):
+            urls=list(dict.fromkeys(url for value in values if (url:=_site_url(value))))
+            if len(urls)==1:return dict(url=urls[0],urlSource=source,detected=True)
+            if len(urls)>1:return dict(url='',detail='Multiple website addresses were declared. Choose the Website URL in Edit project.')
+        for key in ('website','siteUrl','productionUrl','homepage'):
+            result=choose([project.get(key)],'Project '+key)
+            if result:return result
+        try:folder=self.folder(project)
+        except ProjectOperationError:folder=None
+        if folder:
+            def read(name):
+                path=(folder/name).resolve()
+                if not path.is_relative_to(folder):return ''
+                try:
+                    if not path.is_file() or path.stat().st_size>262144:return ''
+                    return path.read_text(encoding='utf-8-sig',errors='replace')
+                except OSError:return ''
+            cname=read('CNAME').strip()
+            if re.fullmatch(r'(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,63}',cname):
+                return dict(url='https://'+cname+'/',urlSource='CNAME',detected=True)
+            for name in ('index.html','public/index.html','src/index.html','landing/index.html'):
+                parser=_SiteMetadata()
+                parser.feed(read(name))
+                result=choose(parser.canonical or parser.social,name+' website metadata')
+                if result:return result
+            result=choose([project.get('githubHomepage')],'GitHub repository homepage')
+            if result:return result
+            try:package=json.loads(read('package.json') or '{}')
+            except (ValueError,TypeError):package={}
+            result=choose([package.get('homepage')] if isinstance(package,dict) else [],'package.json homepage')
+            if result:return result
+            for name in ('README.md','README.MD','README'):
+                # Only explicitly labelled website links; dependency/docs URLs
+                # elsewhere in the README do not identify the project's site.
+                values=re.findall(r'^\s*(?:[-*]\s*)?(?:website|live site|production url|site url|homepage)\s*:\s*(?:\[[^\]]*\]\()?\s*(https?://[^\s<>\)]+)',read(name),re.I|re.M)
+                result=choose(values,name+' website link')
+                if result:return result
+        result=choose([project.get('githubHomepage')],'GitHub repository homepage')
+        return result or dict(url='',detail='No declared website address found. Set Website URL in Edit project.')
 
     def _check_files(self, folder):
         # Includes existing staged files, modified tracked files and unignored new
