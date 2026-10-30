@@ -262,6 +262,28 @@ class DeskCodex:
     def send_audit(self,body):
         return self.send(dict(body,preserveActionDraft=True),kind='audit')
 
+    def send_suggestion(self,body):
+        request=thread_id(body.get('requestId'));expected=body.get('suggestion')
+        if not isinstance(expected,dict) or not isinstance(expected.get('text'),str) or not expected['text'].strip():
+            raise ValueError('Refresh Project Desk and accept its current suggestion.')
+        with self.store.MUTATION_LOCK:
+            p=self.project(body.get('projectId'))
+            existing=(self.store.metadata('codexMessages') or {}).get(request)
+            if existing:
+                if existing['projectId']!=p['id'] or existing.get('acceptedSuggestion')!=expected:
+                    raise ValueError('This send request was already used for a different suggestion.')
+                return existing
+            if p.get('suggestion')!=expected:
+                raise ValueError('The suggestion changed. Refresh before accepting it.')
+            local=[c for c in p.get('chats',[]) if c.get('hostId','local')=='local' and c.get('connectionStatus')!='unavailable']
+            preferred=p.get('preferredChatId')
+            target=next((c for c in local if c['id']==preferred),None) if preferred else (local[0] if len(local)==1 else None)
+            if not target:
+                raise ValueError('No unambiguous local chat is linked. Use Review and send to choose the destination. Nothing was sent.')
+            return self.send(dict(projectId=p['id'],requestId=request,threadId=target['id'],
+                action=expected['text'],reason=expected.get('reason') or '',instructions='',
+                preserveActionDraft=True,acceptedSuggestion=expected),kind='suggestion')
+
     def send(self,body,internal=False,kind='normal'):
         p=self.project(body.get('projectId'));new_audit=kind=='audit'
         identity=None if new_audit else thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
@@ -272,6 +294,7 @@ class DeskCodex:
             if request in receipts:
                 existing=receipts[request]
                 same_target=existing.get('newAuditChat',False)==new_audit and (new_audit or existing['threadId']==identity)
+                if new_audit and existing.get('auditSourceKey')!=body.get('auditSourceKey'):same_target=False
                 if not same_target or (existing['projectId'],existing['message'])!=(p['id'],message):
                     raise ValueError('This send request was already used for a different message.')
                 return existing
@@ -279,6 +302,10 @@ class DeskCodex:
             if new_audit:
                 from project_ops import ProjectOps
                 audit_folder=str(ProjectOps(self.store).folder(p))
+                source_key=body.get('auditSourceKey')
+                source_report=p.get('auditReport') or {}
+                if source_key is not None and (not isinstance(source_key,str) or source_key!=(source_report.get('id') or source_report.get('completedAt') or source_report.get('checkedAt'))):
+                    raise ValueError('The source audit changed. Reopen its current report before sending fixes.')
             from work_control import busy
             if busy(p):raise ValueError('This project already has work in progress. Add content to its queue instead.')
             if not internal and (p.get('workPaused') or any(i['state'] in ('pending','dispatching') for i in p.get('contentQueue',[]))):
@@ -290,7 +317,13 @@ class DeskCodex:
             receipt=dict(id=request,threadId=identity,projectId=p['id'],message=message,action=body['action'].strip(),reason=body.get('reason','').strip(),
                 status='working',createdAt=self.store.now(),managed=True,preserveActionDraft=body.get('preserveActionDraft',False))
             receipts[request]=receipt
+            if kind=='suggestion':receipt['acceptedSuggestion']=body['acceptedSuggestion']
             if new_audit:receipt.update(newAuditChat=True,cwd=audit_folder,title='Audit',note='Creating a new Audit chat in the project folder.')
+            if new_audit and source_key:
+                if source_report.get('mode') not in ('readiness','finish-team'):
+                    raise ValueError('This older report has no saved audit mode. Run a new project audit before sending fixes for automatic re-auditing.')
+                receipt['auditSourceKey']=source_key
+                p['auditFollowUp']=dict(status='waiting-fixes',sourceReportKey=source_key,sourceMode=source_report['mode'],previousGrade=source_report.get('grade'),requestId=request,createdAt=self.store.now(),detail='One verification audit will run after this fix chat and queued additions finish.')
             p['workState']=dict(phase='sending',threadId=identity,requestId=request,kind=kind,startedAt=self.store.now(),detail='Sending reviewed work to Codex.')
             self.store.mark_reviewed(p)
             p['suggestion']=None;p['needsRecommendation']=False

@@ -34,7 +34,7 @@ class TrackerTests(unittest.TestCase):
         server.event(p, '2026-10-28T10:00:00+00:00', 'Outlined offer', 'Manual update', 'old')
         p['suggestion']={'text':'Draft the pricing page'}
         server.save(p)
-        p=server.update({'id':p['id'], 'action':'accept'})
+        p=server.update({'id':p['id'], 'nextAction':'Draft the pricing page'})
         self.assertEqual(p['nextAction'],'Draft the pricing page')
         self.assertEqual(p['activity'][0]['id'],'old')
         server.update({'id':p['id'], 'nextAction':'Test pricing with three customers'})
@@ -226,18 +226,15 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(saved['chats'][0]['connectionStatus'],'verified')
         self.assertEqual(saved['chats'][0]['title'],'Correct title')
 
-    def test_action_reason_tracks_edits_acceptance_and_completion(self):
+    def test_action_reason_tracks_edits_and_completion(self):
         p=server.update({'name':'Reason test','nextAction':'First step'})
         p['nextActionReason']='Reason for first step';server.save(p)
         saved=server.update({'id':p['id'],'blocker':'Waiting on files'})
         self.assertEqual(saved['nextActionReason'],'Reason for first step')
         saved=server.update({'id':p['id'],'nextAction':'Changed step'})
         self.assertNotIn('nextActionReason',saved)
-        saved['suggestion']={'text':'Suggested step','reason':'Because it follows the milestone'};server.save(saved)
-        saved=server.update({'id':p['id'],'action':'accept'})
-        self.assertEqual(saved['nextActionReason'],'Because it follows the milestone')
         saved=server.update({'id':p['id'],'action':'complete-action','requestId':str(uuid.uuid4()),
-            'expectedAction':'Suggested step','nextAction':'Replacement'})
+            'expectedAction':'Changed step','nextAction':'Replacement'})
         self.assertNotIn('nextActionReason',saved)
 
 if __name__=='__main__':

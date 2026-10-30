@@ -66,7 +66,54 @@ in the next-action review, explicitly importing a saved Codex index, or using th
 optional installed `spd` skill described below. Audits differ from next-action
 sends: after review, they create a new chat named **Audit** in the project folder.
 
+## PDog project companion
+
+![PDog, the Project Desk robot companion, showing working, thinking, blocked, and finished expressions.](assets/pdog-concept.png)
+
+PDog is the little robot on each project card. His six poses show ready,
+working, thinking/waiting, blocked, paused, and finished states. Click him for a
+plain-language explanation of the saved status. He also appears while the agent
+is thinking about a next-action recommendation. Active work takes precedence
+over a queued pause; a finished task is distinct from a completed project.
+PDog does not start work, send messages, or change a project's status.
+Animations respect the operating system's reduced-motion preference.
+
+## Card status and stats
+
+Cards fit their own content height in a staggered grid. The next project fills
+the available space below a shorter card instead of stretching all cards to a
+shared row height. Layout adjusts when details expand, filters change, or the
+window resizes, while retaining the current sort and pinned-project priority.
+
+Work status controls each card's accent: cyan for active work, blue while sending
+or queued, amber for attention, red for blocked or failed work, muted gray for
+paused work, and green for a finished task or a project marked Complete. Text
+labels and PDog explain the state alongside the colors. Active work takes
+precedence over a requested pause or older blocker.
+
+Each card separately shows its saved audit grade and review date (click to open
+the report), plus the age of its latest recorded work activity. Idle projects
+show **Quiet for ... days** after seven days without recorded activity. Activity
+age does not imply poor project quality, and an old audit does not control the
+card's current work color.
+
+A newly observed successful Codex turn or manual task completion gets a brief,
+small sparkle celebration. Failed turns and historical completions on page load
+never trigger it. Refreshing the same completion does not replay it. Celebrations
+do not move cards or run project work; reduced-motion mode uses static sparkles.
+
 ## Work, queue, and finishing controls
+
+Active Codex tasks show a progress strip. When a successful structured Codex
+plan update is available for the exact current turn, it displays completed/total
+plan steps, the current step, and an expandable step list. It counts completed
+steps only; it does not estimate elapsed time or count tool calls as progress.
+Without measurable plan evidence, it shows an indeterminate **Working** indicator
+(or Sending/Waiting/Checking status as appropriate). Proposed plan text and chat
+claims are not counted. Plans from older turns are never reused. If Codex revises
+its plan, the total can change. Completing every plan step does not mark the task
+finished; that still requires the actual turn-completion signal. The indicator
+respects reduced motion and is hidden after work finishes.
 
 Audit reports highlight the grade, highest-priority findings, failed checks,
 and verification gaps. Other findings, check results, and full reviewer evidence
@@ -111,9 +158,29 @@ Sending a reviewed next action immediately reserves the project as working. A de
 
 Pause lets the current turn finish and holds queued additions. Resume drains them. Wrap up work schedules a handoff in the same chat after the current turn, then pauses additions. A failed or interrupted turn holds the queue and shows Needs attention. Check work status acknowledges a known failed turn or failed delivery and leaves additions paused for review; ambiguous deliveries are checked without automatic retransmission. Queue receipts and state survive restarts. Interrupted audits/releases are never replayed automatically. Completion checks run about every five seconds; active-chat discovery about every thirty seconds. Local saved Codex history must expose the turn and final status. Cloud chats remain link-only.
 
+A separate Codex history connection can report an open desktop turn as interrupted. Project Desk checks read-only, exact-turn session events before treating that result as an interruption. Recent nonterminal activity keeps the project working; missing or stale evidence shows that status is being checked and holds additions without declaring failure. A confirmed live turn or completion clears a false automatic failure hold. Explicit user pauses remain in place. Codex session files are never modified.
+
 Push to GitHub + release commits the project repository's nonignored changes, pushes its current named branch, creates the next annotated patch-version tag, publishes a GitHub release, and verifies publication. This button publishes; it does not create a draft. It validates the configured repository and all push destinations, checks obvious credential files and private keys, rejects behind/diverged branches, and preserves partial progress on failure. No force push, reset, stash, or cleanup is used. A clean unchanged retry resumes its saved incomplete release after checking tag identity. Git and signed-in GitHub CLI access are required. Set the actual local project folder and owner/repository in Edit project first.
 
 Am I done? inspects the actual folder, applies focused required fixes, and reviews again. Finish agent team adds a boss coordinating six specialist reviews: security, errors, writing/AI slop, desktop/mobile UI when applicable, weak spots, and improvements. Specialists inspect independently with at most three running at once; only the boss's repair pass writes files. Existing edits get a local recovery baseline before repairs. Missing access, failed checks, and untested device/authenticated flows stay visible. Agents do not publish, deploy, commit, or send messages as part of reviews. Reports and copyable follow-up prompts are saved locally in data/reports; recovery baselines stay in data/audit-baselines. Review work can take several minutes and progress is shown on the card.
+
+When you send a readiness audit's fixes through **Send to Codex**, Project Desk
+links that Audit chat to the source report and arms **one** automatic follow-up.
+After the exact fix turn succeeds and queued additions finish, the same readiness
+assessor or Finish agent team performs a verification-only audit. It does not run
+another repair pass. Pause holds a pending re-audit until Resume. The old grade
+stays visible as **Pending re-audit** until fresh evidence produces the new grade.
+The report shows the previous/new grades and the team's **When to re-audit**
+recommendation, reason, and prerequisites. It then stops, even if issues remain;
+starting another fix round requires an explicit action.
+
+Failed fixes do not trigger verification. Failed or interrupted verification
+retains the previous report/grade, saves available failure evidence, and needs
+explicit attention; it is not automatically replayed after a restart. A newer
+source audit supersedes a pending follow-up. Earlier report files remain in
+`data/reports`. Automatic follow-up is armed by the report's send workflow;
+copying a prompt or using an unrelated chat does not arm it. Advisor reports keep
+their separate workflow and do not start a readiness team automatically.
 
 Grades: A ready to use; B almost done and usable; C minor fixes or required features remain; D work in progress and not ready for real use; F not working. A requires supporting checks and no material gaps. Optional improvements alone do not prevent an A. Automated review is bounded to one repair/recheck cycle; unresolved findings stay in the report.
 
@@ -131,7 +198,8 @@ the installed skill supplies contextual details and verifies success through the
 live desk API. Registration remains available while an older server finishes
 long-running reviews, using an atomic merge into the same local database.
 
-Archive project beside Pin hides a project from the main desk without deleting
+Archive project beside Pin asks for confirmation before hiding a project from
+the main desk without deleting
 its files, chats, saved drafts, history, or project record. It does not archive
 the native Codex project or stop running work. Open Archived above the cards and
 choose Restore project to show it again. Archives persist across imports and
@@ -170,6 +238,12 @@ python check_setup.py
 python check_browser.py
 python check_actions.py
 python check_audit_send.py
+python check_audit_followup.py
+python check_pdog.py
+python check_card_states.py
+python check_card_layout.py
+python check_task_progress.py
+python check_suggestion_accept.py
 python check_workflow_features.py
 python check_smoothness.py
 ```
@@ -186,7 +260,22 @@ with permission to message that exact chat. It is not part of the default checks
 
 ## Next-action recommendations and Codex delivery
 
-Click a next action to open its review dialog. Project Desk reads recent messages from the selected existing local chat and asks the signed-in Codex CLI for an ephemeral, read-only recommendation and explanation. You can edit the step and reason and add instructions. Nothing is sent until Send to Codex is clicked. The destination is shown explicitly; the preferred linked chat is selected when available, with an exact workspace-path match as a fallback. You can choose another existing local chat.
+On a suggestion, **Accept** immediately sends the displayed step and reason to
+the project's preferred linked local Codex chat, with no review dialog. If no
+preference is set, the project must have exactly one available linked local chat.
+Missing, unavailable, cloud-only, or ambiguous destinations leave the suggestion
+in place and explain how to choose a chat through **Review and send**. A changed
+suggestion is rejected rather than silently sending a different task. Paused,
+busy, or queued projects retain their existing work controls.
+
+**Review and send** opens that exact displayed suggestion for editing, destination
+selection, and optional added instructions. It does not generate a replacement
+recommendation or overwrite a separate next-action draft. Suggestion review edits
+are saved separately in this browser. There is no separate Change button.
+Direct acceptance uses the same durable receipts, working state, and completion
+tracking as reviewed sends; it does not convert the suggestion into a manual task.
+
+Click a next action to open its review dialog. Project Desk reads recent messages from the selected existing local chat and asks the signed-in Codex CLI for an ephemeral, read-only recommendation and explanation. You can edit the step and reason and add instructions. Within this review, nothing is sent until Send to Codex is clicked. The destination is shown explicitly; the preferred linked chat is selected when available, with an exact workspace-path match as a fallback. You can choose another existing local chat.
 
 Send uses the installed CLI's `codex queue --thread <exact UUID> --message <reviewed text>` command, then opens `codex://threads/<exact UUID>` so the desktop app processes its queue. The app distinguishes a queue acknowledgement from a received message: Received by Codex appears only after the exact user message is found in a new turn in that chat. Receipt reconciliation reads history after slow startup or restart; it never automatically retransmits. Unique request IDs prevent repeat clicks or retries from sending duplicates. Prior matching messages cannot count as new delivery.
 
@@ -222,7 +311,7 @@ startup registration. Codex features use the installed CLI and its existing
 account; account access and usage limits still apply. Launch the local server
 again after restarting the computer, or use the installed desktop shortcut.
 
-**Mark done manually** appears when a project has an accepted or manually entered next action. It opens a form with an optional completion note and optional replacement action. Mark done manually saves a permanent completed-action entry, records activity, and updates Last worked on; it does not change project status or blockers. Leaving the replacement empty clears the current action so a new one can be chosen later. Completed actions remain available in each card's history. Cancellation changes nothing; duplicate submissions are idempotent and stale forms cannot complete a changed action.
+**Mark done manually** remains available for manually tracked next actions while the project is idle. Accepting a suggestion sends work to Codex instead. It opens a form with an optional completion note and optional replacement action. Mark done manually saves a permanent completed-action entry, records activity, and updates Last worked on; it does not change project status or blockers. Leaving the replacement empty clears the current action so a new one can be chosen later. Completed actions remain available in each card's history. Cancellation changes nothing; duplicate submissions are idempotent and stale forms cannot complete a changed action.
 
 Project types include Website, App, and Documents Render. Documents Render requires an agency name; the agency field suggests previously saved names and accepts a new name. Agency names also appear on cards and are searchable.
 

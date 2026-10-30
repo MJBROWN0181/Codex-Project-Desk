@@ -322,10 +322,8 @@ def update(payload):
         if site.scheme not in ('http','https') or not site.hostname or site.username or site.password:
             raise ValueError('Use a complete http:// or https:// website URL without credentials.')
     action = payload.get('action')
-    if action == 'accept' and p['suggestion']:
-        p['nextAction'] = p['suggestion']['text']
-        p['nextActionReason']=p['suggestion'].get('reason','')
-        p['suggestion'] = None
+    if action == 'accept':
+        raise ValueError('Accept now sends suggestions to Codex. Reload Project Desk to use the updated Accept button.')
     elif action == 'dismiss':
         p['suggestion'] = None
         p['dismissedSetup'] = True
@@ -479,7 +477,7 @@ class Handler(BaseHTTPRequestHandler):
             if not p:return self.json_response({'error':'Project was not found.'},404)
             return self.json_response(dict(draft=p.get('actionDraft'),revision=p.get('draftRevision',0)))
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
-                 '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript'),
+                 '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/pdog-poses.png': ('../assets/pdog-poses.png','image/png'), '/theme.js': ('theme.js','text/javascript'),
                  '/setup.js': ('setup.js','text/javascript'), '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript'),
                  '/control.js':('control.js','text/javascript'),'/control.css':('control.css','text/css')}
         if route not in files:
@@ -525,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                 result=codex_service().send(body)
             elif self.path == '/api/codex/send-audit':
                 result=codex_service().send_audit(body)
+            elif self.path == '/api/codex/accept-suggestion':
+                result=codex_service().send_suggestion(body)
             elif self.path == '/api/project/control':
                 result=codex_service().control.control(body)
             elif self.path == '/api/project/queue':

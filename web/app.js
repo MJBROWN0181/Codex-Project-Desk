@@ -44,6 +44,67 @@ async function request(url, body) {
   const response = await fetch(url, body === undefined ? {cache:'no-store'} : {method:'POST',keepalive:url==='/api/drafts',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not save changes.'); return data;
 }
+// Card appearance comes from saved work state; grades and activity are independent.
+const observedCardCompletions=new Map(),pendingCardCelebrations=new Map();
+function cardWorkState(p){
+  const w=p.workState || {};
+  if(w.phase==='failed' || (w.phase==='attention' && ['failed','interrupted'].includes(w.outcome)))return {key:'blocked',label:'Work stopped'};
+  if(w.phase==='attention' || w.monitorError)return {key:'attention',label:'Needs attention'};
+  if(w.phase==='working')return {key:'working',label:'Working'};
+  if(w.phase==='operation')return {key:'working',label:['assess','finish-team','advisors'].includes(w.operation)?'Reviewing':'Working'};
+  if(['sending','queued'].includes(w.phase))return {key:'waiting',label:w.phase==='sending'?'Sending to Codex':'Waiting for Codex'};
+  if(p.workPaused || p.status==='Paused')return {key:'paused',label:'Paused'};
+  if(p.blocker || p.websiteHealth?.state==='down')return {key:'blocked',label:p.blocker?'Blocked':'Site needs attention'};
+  if(p.status==='Complete')return {key:'complete',label:'Project marked complete'};
+  if(w.outcome==='completed' || w.phase==='complete')return {key:'finished',label:'Task finished'};
+  if(p.status==='Waiting')return {key:'attention',label:'Waiting on something'};
+  return {key:'ready',label:'Ready'};
+}
+function cardShortDate(value){
+  const at=Date.parse(value);
+  return Number.isFinite(at)?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(at):'Date unavailable';
+}
+function cardActivity(p,now=Date.now()){
+  const dates=(p.activity || []).map(a=>Date.parse(a.at)).filter(Number.isFinite);
+  if(!dates.length)return {quiet:false,text:'No activity yet',title:'No work activity has been recorded for this project.'};
+  const at=Math.max(...dates);
+  if(at>now+60000)return {quiet:false,text:'Check activity date',title:'The latest recorded activity is dated in the future.'};
+  const days=Math.max(0,Math.floor((now-at)/86400000));
+  const idle=!['working','operation','sending','queued'].includes(p.workState?.phase);
+  const quiet=idle && days>=7 && !isArchived(p) && p.status!=='Complete';
+  return {quiet,text:quiet?`Quiet for ${days} days`:days===0?'Worked on today':days===1?'Worked on yesterday':`Last activity ${days} days ago`,title:'Last recorded work: '+dateText(at)+'. Activity age does not grade project quality.'};
+}
+function cardSignals(p,state){
+  const e=escapeHtml,activity=cardActivity(p),report=p.auditReport;
+  const grade=/^[ABCDF]$/.test(report?.grade)?report.grade:null;
+  const audited=report?.completedAt || report?.checkedAt;
+  return `<div class="card-signals" aria-label="Project status and stats"><span class="card-state-label"><span class="card-state-dot" aria-hidden="true"></span>${e(state.label)}</span>${report?`<button type="button" class="card-audit-stat card-audit-grade-${grade || 'unknown'}" data-action="work-report" title="${e('Open the saved audit. Its grade reflects that review, not current work status. '+(audited?'Reviewed '+dateText(audited):'Review date unavailable.'))}"><strong>${e(grade?'Audit '+grade:'Audit not graded')}</strong><span>${e(cardShortDate(audited))}</span>${['waiting-fixes','queued','running'].includes(p.auditFollowUp?.status)?'<span>Pending re-audit</span>':''}</button>`:'<span class="card-stat">Not audited</span>'}<span class="card-stat${activity.quiet?' card-quiet':''}" title="${e(activity.title)}">${e(activity.text)}</span></div>`;
+}
+function cardCompletion(p){
+  const candidates=[];
+  const add=(key,at)=>{const stamp=Date.parse(at);if(Number.isFinite(stamp))candidates.push({key:key+':'+stamp,at:stamp});};
+  if(p.workState?.outcome==='completed')add('codex',p.workState.completedAt);
+  for(const a of p.activity || [])if(a.source==='Codex completion' && a.note==='Codex work completed')add('codex',a.at);
+  for(const a of p.completedActions || [])add('manual:'+a.id,a.at);
+  return candidates.sort((a,b)=>b.at-a.at)[0] || {key:'none',at:0};
+}
+function observeCardCompletions(items,now=Date.now()){
+  for(const p of items){
+    const completion=cardCompletion(p),previous=observedCardCompletions.get(p.id);
+    if(previous && completion.key!==previous.key && completion.at>previous.at && now-completion.at>=-5000 && now-completion.at<120000 && !isArchived(p))pendingCardCelebrations.set(p.id,now+6000);
+    if(!previous || completion.at>=previous.at)observedCardCompletions.set(p.id,completion);
+  }
+}
+function celebrateVisibleCards(){
+  for(const [id,until] of pendingCardCelebrations){
+    if(until<Date.now()){pendingCardCelebrations.delete(id);continue;}
+    const card=document.querySelector(`article.project[data-id="${CSS.escape(id)}"]`);
+    if(!card)continue;
+    pendingCardCelebrations.delete(id);card.classList.add('card-celebrating');
+    const message=document.createElement('span');message.className='card-celebration-message';message.setAttribute('role','status');message.textContent='Task finished in '+(projects.find(p=>p.id===id)?.name || 'this project')+'.';card.append(message);
+    setTimeout(()=>{card.classList.remove('card-celebrating');message.remove();},2600);
+  }
+}
 async function load() {
   const sequence=++projectLoadSequence;
   const data = await request('/api/projects');
@@ -51,6 +112,7 @@ async function load() {
   archiveBackend=!!data.features?.projectArchive;
   await syncArchivePending(data);
   if(sequence!==projectLoadSequence)return;
+  observeCardCompletions(data.projects);
   projects = data.projects; chatAssignments = data.chatAssignments || {};
   projectDeskRoot=data.appRoot || '';
   codexMessages=data.codexMessages || {};
@@ -60,6 +122,30 @@ async function load() {
   render();
   if(data.setup?.required && !document.querySelector('dialog[open]'))openSetup(data.setup);
 }
+// Size grid spans from each card's content instead of stretching a whole row.
+let projectLayoutFrame=0,projectLayoutWidth=0;
+function layoutProjectCards(){
+  const container=$('#projects');
+  if(!container)return;
+  const cards=[...container.querySelectorAll(':scope > article.project')];
+  if(!cards.length){container.classList.remove('projects-fit');return;}
+  container.classList.add('projects-fit');
+  const row=parseFloat(getComputedStyle(container).gridAutoRows) || 4;
+  const spans=cards.map(card=>Math.max(1,Math.ceil((card.getBoundingClientRect().height+18)/row)));
+  cards.forEach((card,index)=>{const span='span '+spans[index];if(card.style.gridRowEnd!==span)card.style.gridRowEnd=span;});
+}
+function scheduleProjectLayout(){
+  if(projectLayoutFrame)return;
+  projectLayoutFrame=requestAnimationFrame(()=>{projectLayoutFrame=0;layoutProjectCards();});
+}
+const projectCardSizes=typeof ResizeObserver==='function'?new ResizeObserver(scheduleProjectLayout):null;
+const projectListSize=typeof ResizeObserver==='function'?new ResizeObserver(entries=>{
+  const width=entries[0]?.contentRect.width;
+  if(width!==projectLayoutWidth){projectLayoutWidth=width;scheduleProjectLayout();}
+}):null;
+projectListSize?.observe($('#projects'));
+window.addEventListener('resize',scheduleProjectLayout);
+document.fonts?.ready.then(scheduleProjectLayout);
 function render() {
   const query = $('#search').value.toLowerCase();
   const pool=projects.filter(p=>isArchived(p)===archivedView);
@@ -71,10 +157,14 @@ function render() {
   $('#archive-view').setAttribute('aria-pressed',String(archivedView));
   $('#project-view-title').textContent=archivedView?'Archived projects':'Your projects';
   $('#count').textContent = `${shown.length} of ${pool.length}`;
+  projectCardSizes?.disconnect();
   $('#projects').innerHTML = shown.map(p=>{
-    const e=escapeHtml, working=workBusy(p), s=working?null:p.suggestion;
-    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><div class="card-controls"><span class="badge ${e(p.status)}">${e(p.status)}</span><div class="card-organize"><button class="pin-project" data-action="pin" aria-pressed="${!!p.pinned}" aria-label="${p.pinned?'Unpin project':'Pin project'}">${p.pinned?'Pinned':'Pin'}</button><button class="archive-project" data-action="${isArchived(p)?'restore':'archive'}" title="${isArchived(p)?'Show this project on the desk again':'Hide from the desk; keep the project, files, and chats'}">${isArchived(p)?'Restore project':'Archive project'}</button></div></div></div><div class="card-body">${workMarkup(p)}<div class="next" ${working?'hidden':''}><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Mark done manually</button><small class="manual-done-help">Use this for work you finish yourself. Work sent to Codex updates automatically when its chat finishes.</small>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}${activityMarkup(p)}${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}${replyMarkup(p)}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(compactText(c.title,100))}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer">${p.status==='Unreviewed' && !working?'<button data-action="reviewed">Mark reviewed</button>':''}${p.actionDraft && !working?'<button data-action="review">Resume draft</button>':''}${!working?'<button data-action="edit">Edit project</button><button data-action="log">Log activity</button>':''}${p.chats.length && !working?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
+    const e=escapeHtml, working=workBusy(p), s=working?null:p.suggestion,cardState=cardWorkState(p);
+    return `<article class="project card-${cardState.key}" data-id="${e(p.id)}" data-work-state="${cardState.key}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><div class="card-controls"><span class="badge ${e(p.status)}">${e(p.status)}</span><div class="card-organize"><button class="pin-project" data-action="pin" aria-pressed="${!!p.pinned}" aria-label="${p.pinned?'Unpin project':'Pin project'}">${p.pinned?'Pinned':'Pin'}</button><button class="archive-project" data-action="${isArchived(p)?'restore':'archive'}" title="${isArchived(p)?'Show this project on the desk again':'Hide from the desk; keep the project, files, and chats'}">${isArchived(p)?'Restore project':'Archive project'}</button></div></div></div><div class="card-body">${cardSignals(p,cardState)}${workMarkup(p)}<div class="next" ${working?'hidden':''}><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Mark done manually</button><small class="manual-done-help">Use this for work you finish yourself. Work sent to Codex updates automatically when its chat finishes.</small>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="accept" title="Send this suggestion directly to the linked Codex chat">Accept</button><button class="quiet" data-action="review-suggestion">Review and send</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}${activityMarkup(p)}${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}${replyMarkup(p)}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(compactText(c.title,100))}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer">${p.status==='Unreviewed' && !working?'<button data-action="reviewed">Mark reviewed</button>':''}${p.actionDraft && !working?'<button data-action="review">Resume draft</button>':''}${!working?'<button data-action="edit">Edit project</button><button data-action="log">Log activity</button>':''}${p.chats.length && !working?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
   }).join('') || `<p class="no-results">${archivedView?'No archived projects match. Archived projects are kept here and can be restored.':focusOnly?'No pinned projects match. Show all projects to pin one, or adjust your filters.':'No projects match. Change your filters or add a project.'}</p>`;
+  layoutProjectCards();
+  $('#projects').querySelectorAll(':scope > article.project').forEach(card=>projectCardSizes?.observe(card));
+  celebrateVisibleCards();
 }
 function compactText(value,limit=180){
   const text=String(value ?? '').replace(/\s+/g,' ').trim();
@@ -96,7 +186,7 @@ function replyMarkup(p){
 }
 $('#focus-only').onclick=()=>{focusOnly=!focusOnly;try{localStorage.setItem('project-desk-focus',String(focusOnly));}catch{}render();};
 $('#archive-view').onclick=()=>{archivedView=!archivedView;render();};
-function openEditor(project, suggestion=false) {
+function openEditor(project) {
   editing = project?.id || null;
   const form=$('#project-form'); form.reset(); $('#editor-title').textContent=project?'Edit project':'Add project';
   for (const key of ['name','kind','status','nextAction','blocker','repo','agency','path','websiteUrl']) form.elements[key].value=project?.[key] ?? ({kind:'Mixed',status:'Active'}[key] || '');
@@ -104,8 +194,7 @@ function openEditor(project, suggestion=false) {
   $('#agency-options').innerHTML=agencies.map(a=>`<option value="${escapeHtml(a)}"></option>`).join('');
   updateAgency();
   $('#editor-chats').innerHTML=project?.chats.length ? `<h3>Linked Codex chats</h3>${project.chats.map(c=>`<div class="chat-row"><div><a href="${escapeHtml(c.url)}">${escapeHtml(c.title)}</a><small>${escapeHtml(dateText(c.at))}</small>${pendingLabel(c.id)}</div><button type="button" class="quiet" data-thread="${escapeHtml(c.id)}">Move chat</button></div>`).join('')}` : '<p class="hint">No linked Codex chats in the current index.</p>';
-  if (suggestion) form.elements.nextAction.value=project.suggestion.text;
-  form.dataset.change = suggestion?'true':'false'; $('#editor').showModal();
+  $('#editor').showModal();
 }
 function pendingLabel(id) {
   return chatAssignments[id]?.nativeStatus==='pending' ? '<small class="pending-move">Move in Codex pending</small>' : '';
@@ -160,12 +249,15 @@ $('#projects').onclick=async event=>{
   const p=projects.find(p=>p.id===button.closest('article').dataset.id), action=button.dataset.action;
   if(await handleWorkAction(p,action))return;
   if(action==='archive' || action==='restore'){
+    if(action==='archive' && !window.confirm(`Archive "${p.name}"?\n\nThis removes it from the desk. Files, chats, and history are kept. You can restore it from Archived.`))return;
     button.disabled=true;try{await setProjectArchived(p,action==='archive');}catch(error){notice(error.message);}finally{button.disabled=false;}return;
   }
   if(action==='pin'){
     button.disabled=true;try{await request('/api/projects',{id:p.id,pinned:!p.pinned});await load();}catch(error){notice(error.message);}finally{button.disabled=false;}return;
   }
-  if(action==='edit' || action==='change') return openEditor(p,action==='change');
+  if(action==='edit')return openEditor(p);
+  if(action==='accept')return acceptSuggestion(p,button);
+  if(action==='review-suggestion')return openActionReview(p,null,{key:'suggestion:'+p.id+':'+JSON.stringify(p.suggestion),action:p.suggestion.text,reason:p.suggestion.reason || '',instructions:''});
   if(action==='review')return openActionReview(p);
   if(action==='receipt'){
     const receipt=Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
@@ -183,13 +275,12 @@ $('#projects').onclick=async event=>{
   button.disabled=true;
   try {
     await request(action==='github'?'/api/github':'/api/projects',{id:p.id,action});
-    await load(); notice(action==='accept'?'Next action accepted.':action==='dismiss'?'Suggestion dismissed.':action==='reviewed'?'Project reviewed and marked Active.':'GitHub activity refreshed.');
+    await load(); notice(action==='dismiss'?'Suggestion dismissed.':action==='reviewed'?'Project reviewed and marked Active.':'GitHub activity refreshed.');
   } catch(error) { notice(error.message); } finally { button.disabled=false; }
 };
 $('#project-form').onsubmit=async event=>{
   event.preventDefault(); const form=event.target, button=form.querySelector('[type=submit]'); button.disabled=true;
   try { const payload=Object.fromEntries(new FormData(form)); if(editing) payload.id=editing;
-    if(form.dataset.change==='true') payload.action='dismiss';
     await request('/api/projects',payload); $('#editor').close(); await load(); notice('Project saved.');
   } catch(error) { notice(error.message); } finally { button.disabled=false; }
 };

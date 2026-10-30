@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Codex Project Desk",
+    "productType": null,
+    "stack": []
+  },
+  "sources": {
+    "tokens": [],
+    "components": [],
+    "assets": [
+      "assets"
+    ],
+    "instructions": [
+      "AGENTS.md"
+    ]
+  },
+  "design": {
+    "colorMode": "unknown",
+    "colors": {},
+    "typography": {},
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "unknown"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [],
+    "avoid": []
+  },
+  "decisions": [
+    {
+      "decision": "PDog is the project status companion",
+      "details": "Approved pearl-white robot dog, cyan anime LED eyes, floppy mechanical ears. Six poses show saved real state; clicking opens a read-only explanation. Preserve compact cards, both themes, keyboard access, and reduced motion."
+    },
+    {
+      "decision": "Card appearance follows work state",
+      "details": "Use compact colored edges and explicit state labels. Keep audit grade/date and activity age separate; quiet starts after seven idle days. Celebrate only newly observed successful tasks once with small nonblocking sparkles, no layout movement or refresh replay; honor reduced motion."
+    },
+    {
+      "decision": "Content-height staggered project cards",
+      "details": "Measure natural card heights into short CSS grid row spans. Fill shorter columns, preserve sorted DOM and pinned priority, and recalculate on content or width changes without rerendering open details."
+    }
+  ],
+  "evidence": [
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    }
+  ],
+  "generatedAt": "2026-10-30T05:19:58.588Z"
+}

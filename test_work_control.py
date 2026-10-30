@@ -122,4 +122,38 @@ class WorkControlTests(unittest.TestCase):
         operation.assert_not_called();self.assertTrue(self.project()['releaseState']['pushed'])
         self.assertEqual(self.project()['workState']['phase'],'attention')
 
+    def test_live_turn_repairs_false_attention_without_sending(self):
+        self.sent();self.queue();self.turns('failed');self.control.tick(self.native)
+        self.assertTrue(self.project()['workPaused'])
+        self.turns('inProgress')
+        with patch.object(self.service,'send') as send:self.control.tick(self.native)
+        send.assert_not_called();p=self.project()
+        self.assertEqual(p['workState']['phase'],'working')
+        self.assertFalse(p['workPaused']);self.assertEqual(p['status'],'Active')
+        self.assertNotIn('outcome',p['workState'])
+        self.assertEqual(p['contentQueue'][0]['state'],'pending')
+
+    def test_live_recovery_preserves_explicit_user_pause(self):
+        self.sent();self.control_action('pause');self.turns('failed');self.control.tick(self.native)
+        self.turns('inProgress');self.control.tick(self.native)
+        self.assertEqual(self.project()['workState']['phase'],'working')
+        self.assertTrue(self.project()['workPaused'])
+
+    def test_unconfirmed_interruption_never_pauses_or_dispatches(self):
+        self.sent();self.queue();self.turns('interrupted')
+        self.native.call.return_value['data'][0]['completedAt']=None
+        with patch.object(self.service,'send') as send:self.control.tick(self.native)
+        send.assert_not_called();p=self.project()
+        self.assertEqual(p['workState']['phase'],'working')
+        self.assertFalse(p.get('workPaused',False));self.assertNotIn('outcome',p['workState'])
+
+    def test_completion_clears_legacy_false_hold(self):
+        self.sent();p=self.project()
+        p['workState'].update(phase='attention',outcome='interrupted',detail='Codex work interrupted. Queued additions are held. Check the chat before resuming.')
+        p['workPaused']=True;p['status']='Paused';server.save(p)
+        self.turns('completed')
+        with patch('work_control.threading.Thread'):self.control.tick(self.native)
+        p=self.project();self.assertEqual(p['workState']['phase'],'idle')
+        self.assertFalse(p['workPaused']);self.assertEqual(p['status'],'Active')
+
 if __name__=='__main__':unittest.main()

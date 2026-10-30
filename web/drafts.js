@@ -14,7 +14,7 @@ async function flushDraft(session=activeDraftSession){
   clearTimeout(session.timer);
   if(session.localOnly){
     session.saved=session.changed;
-    if(activeDraftSession===session)$('#draft-status').textContent=session.localSaved?'Audit fix draft saved in this browser. Your next-action draft is preserved.':'Audit edits are kept in this window. Browser draft storage is unavailable.';
+    if(activeDraftSession===session)$('#draft-status').textContent=session.localSaved?`${session.label || 'Audit fix'} draft saved in this browser. Your next-action draft is preserved.`:'Edits are kept in this window. Browser draft storage is unavailable.';
     return;
   }
   if(session.saving){await session.saving;return flushDraft(session);}
@@ -32,15 +32,15 @@ async function flushDraft(session=activeDraftSession){
   await session.saving;
   if(session.saved!==session.changed && !session.conflict && !session.error)return flushDraft(session);
 }
-async function restoreActionDraft(projectId,generation,auditKey=null){
+async function restoreActionDraft(projectId,generation,auditKey=null,label='Audit fix'){
   const previous=activeDraftSession;activeDraftSession=null;
   if(previous)await flushDraft(previous);
   if(auditKey){
     if(generation!==actionGeneration || !$('#action-review').open)return null;
     const storageKey='project-desk-audit-fix:'+auditKey;
     let backup;try{backup=JSON.parse(localStorage.getItem(storageKey) || 'null');}catch{}
-    activeDraftSession={projectId,storageKey,localOnly:true,draft:backup?.draft || null,revision:0,changed:0,saved:0,editedAt:backup?.editedAt || Date.now()};
-    $('#draft-status').textContent=backup?.draft?'Saved audit fix draft restored. Your next-action draft is preserved.':'Audit edits save in this browser. Your next-action draft is preserved.';
+    activeDraftSession={projectId,storageKey,localOnly:true,label,draft:backup?.draft || null,revision:0,changed:0,saved:0,editedAt:backup?.editedAt || Date.now()};
+    $('#draft-status').textContent=backup?.draft?`Saved ${label.toLowerCase()} draft restored. Your next-action draft is preserved.`:`${label} edits save in this browser. Your next-action draft is preserved.`;
     return activeDraftSession.draft;
   }
   const result=await request('/api/drafts/'+encodeURIComponent(projectId));
@@ -63,9 +63,9 @@ $('#discard-draft').onclick=async()=>{
   if(session.localOnly){
     try{localStorage.removeItem(session.storageKey);}catch{}
     clearTimeout(session.timer);session.draft=null;session.saved=session.changed;
-    const f=$('#action-form');f.elements.action.value=actionReviewSeed?.action || '';f.elements.reason.value=actionReviewSeed?.reason || '';f.elements.instructions.value=actionReviewSeed?.instructions || '';
-    f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!!actionReview.workPaused;
-    updateActionPreview();$('#draft-status').textContent='Audit edits discarded. The original audit prompt is shown; your next-action draft is unchanged.';return;
+    const f=$('#action-form'),source=actionReviewSeed || actionSuggestion;f.elements.action.value=source?.action || '';f.elements.reason.value=source?.reason || '';f.elements.instructions.value=source?.instructions || '';
+    f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!!actionReview.workPaused || (!actionReviewSeed && !f.elements.threadId.value);
+    updateActionPreview();$('#draft-status').textContent='Edits discarded. The original prompt is shown; your next-action draft is unchanged.';return;
   }
   try{
     const result=await request('/api/drafts',{projectId:session.projectId,expectedRevision:session.revision,draft:null});

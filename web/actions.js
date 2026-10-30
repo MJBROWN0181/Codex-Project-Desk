@@ -1,4 +1,16 @@
-let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0,actionReviewSeed=null;
+let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0,actionReviewSeed=null,actionSuggestion=null;
+const suggestionSendRequests=new Map(),suggestionSending=new Set();
+async function acceptSuggestion(project,button){
+  const key=project.id+JSON.stringify(project.suggestion);
+  if(suggestionSending.has(key))return;
+  suggestionSending.add(key);button.disabled=true;button.textContent="Sending…";
+  if(!suggestionSendRequests.has(key))suggestionSendRequests.set(key,crypto.randomUUID());
+  try{
+    const receipt=await request("/api/codex/accept-suggestion",{projectId:project.id,requestId:suggestionSendRequests.get(key),suggestion:project.suggestion});
+    await load().catch(()=>{});await openDelivery(receipt);
+  }catch(error){notice(error.message);}
+  finally{suggestionSending.delete(key);button.disabled=false;button.textContent="Accept";}
+}
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let pickerChats=[];
 function renderChatPicker(){
@@ -70,11 +82,11 @@ async function generateAction(){
   }catch(error){if(sequence===actionGeneration)$('#action-status').textContent=error.message;}
   finally{if(sequence===actionGeneration){setRecommendationBusy(false);$('#recommend-action').disabled=false;form.elements.action.readOnly=false;form.elements.reason.readOnly=false;$('#send-action').disabled=false;}}
 }
-async function openActionReview(project,seed=null){
+async function openActionReview(project,seed=null,suggestion=null){
   actionReview=project;actionSendId=crypto.randomUUID();const openSequence=++actionGeneration;
-  actionReviewSeed=seed;
-  $('#action-review h2').textContent=seed?'Review audit fixes':'Review next action';
-  $('#recommend-action').hidden=!!seed;
+  actionReviewSeed=seed;actionSuggestion=suggestion;const source=seed || suggestion;
+  $('#action-review h2').textContent=seed?'Review audit fixes':suggestion?'Review suggestion':'Review next action';
+  $('#recommend-action').hidden=!!source;
   setRecommendationBusy(false);
   const form=$('#action-form');form.reset();
   closeChatPicker();pickerChats=[];$('#chat-picker-search').value='';
@@ -82,14 +94,14 @@ async function openActionReview(project,seed=null){
   $('#chat-picker-toggle').disabled=true;
   $('#action-send-help').textContent=seed?'Send creates a new Audit chat for this project and delivers the reviewed fixes. Existing chats are preserved.':'Send delivers this reviewed message to the selected local chat and opens it in Codex.';
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;form.elements.instructions.readOnly=true;
-  form.elements.action.value=seed?.action || project.nextAction || project.suggestion?.text || '';
-  form.elements.reason.value=seed?.reason || project.nextActionReason || project.suggestion?.reason || '';
-  form.elements.instructions.value=seed?.instructions || '';
+  form.elements.action.value=source?.action || project.nextAction || project.suggestion?.text || '';
+  form.elements.reason.value=source?.reason || project.nextActionReason || project.suggestion?.reason || '';
+  form.elements.instructions.value=source?.instructions || '';
   $('#action-project').textContent=project.name;$('#action-status').textContent='Checking available Codex chats…';
   form.elements.threadId.innerHTML='<option value="">Loading chats…</option>';
   $('#send-action').disabled=true;$('#recommend-action').disabled=true;updateActionPreview();$('#action-review').showModal();
   try{
-    const [result,draft]=await Promise.all([seed?Promise.resolve({chats:[]}):request('/api/codex/threads'),restoreActionDraft(project.id,openSequence,seed?.key)]);
+    const [result,draft]=await Promise.all([seed?Promise.resolve({chats:[]}):request('/api/codex/threads'),restoreActionDraft(project.id,openSequence,source?.key,suggestion?'Suggestion':'Audit fix')]);
     if(openSequence!==actionGeneration || !$('#action-review').open)return;
     const all=new Map(result.chats.map(c=>[c.id,c]));
     const normalized=value=>(value || '').replace(/[\\/]+/g,'/').replace(/\/$/,'').toLowerCase();
@@ -106,12 +118,12 @@ async function openActionReview(project,seed=null){
       for(const key of ['action','reason','instructions'])form.elements[key].value=draft[key] || '';
       updateActionPreview();$('#send-action').disabled=!seed && !preferred;
       $('#action-status').textContent=preferred?'Saved draft restored. Review it before sending.':'The draft is preserved. Choose an available local chat before sending.';
-    }else if(seed){
-      $('#send-action').disabled=false;
-      $('#action-status').textContent='Audit fix prompt ready. Review or edit it before sending to a new Audit chat.';
+    }else if(source){
+      $('#send-action').disabled=!seed && !preferred;
+      $('#action-status').textContent=seed?'Audit fix prompt ready. Review or edit it before sending to a new Audit chat.':'Displayed suggestion ready. Edit it, choose the destination, then send.';
       markDraftChanged();updateActionPreview();
     }else if(preferred)generateAction();else $('#action-status').textContent='Choose the existing Codex chat that should handle this project. A recommendation will be generated for that chat.';
-    if(seed && project.workPaused){
+    if(source && project.workPaused){
       $('#send-action').disabled=true;$('#action-status').textContent='This project is paused. Resume its queue on the card before sending these fixes. Your audit edits are saved separately.';
     }
     if(seed && !project.workPaused)$('#action-status').textContent='Review the fixes below. Send will create a new chat named Audit; nothing has been sent.';
@@ -120,7 +132,7 @@ async function openActionReview(project,seed=null){
 function showReceipt(receipt){
   $('#delivery-title').textContent=deliveryLabel(receipt);
   $('#delivery-chat').textContent=receipt.title || 'Selected Codex chat';
-  $('#delivery-note').textContent=receipt.error || receipt.note || (receipt.status==='received'?'Your reviewed message appears in the destination chat. Work completion is tracked separately.':'Your message is queued for the selected chat. Waiting for confirmation in chat history.');
+  $('#delivery-note').textContent=receipt.error || receipt.note || (receipt.status==='received'?'Your message appears in the destination chat. Work completion is tracked separately.':'Your message is queued for the selected chat. Waiting for confirmation in chat history.');
   $('#delivery-message').textContent=receipt.message;
 }
 async function openDelivery(receipt){
@@ -145,10 +157,10 @@ $('#action-form').addEventListener('input',updateActionPreview);
 $('#action-form').elements.threadId.onchange=()=>{
   setRecommendationBusy(false);
   actionSendId=crypto.randomUUID();const hadDraft=!!activeDraftSession?.draft;markDraftChanged();
-  if(actionReviewSeed){
+  if(actionReviewSeed || actionSuggestion){
     ++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;
     $('#send-action').disabled=!f.elements.threadId.value || !!actionReview.workPaused;
-    $('#action-status').textContent=actionReview.workPaused?'This project is paused. Resume its queue on the card before sending these fixes.':'Audit fix prompt preserved. Review the destination and edits before sending.';return;
+    $('#action-status').textContent=actionReview.workPaused?'This project is paused. Resume its queue on the card before sending these fixes.':'Your prompt is preserved. Review the destination and edits before sending.';return;
   }
   if(hadDraft){++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!f.elements.threadId.value;$('#recommend-action').disabled=!f.elements.threadId.value;$('#action-status').textContent='Destination changed. Your draft is preserved; ask the agent again if you want a new recommendation.';}
   else generateAction();
@@ -161,7 +173,7 @@ $('#action-form').onsubmit=async event=>{
     await flushDraft();
     if(!actionReviewSeed && !form.elements.threadId.value)throw new Error('Choose a Codex chat before sending.');
     const receipt=await request(actionReviewSeed?'/api/codex/send-audit':'/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,...(actionReviewSeed?{}:{threadId:form.elements.threadId.value}),
-      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!actionReviewSeed});
+      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!(actionReviewSeed || actionSuggestion),...(actionReviewSeed?.auditSourceKey?{auditSourceKey:actionReviewSeed.auditSourceKey}:{})});
     $('#action-review').close();await openDelivery(receipt);
   }catch(error){notice(error.message);}finally{button.disabled=false;}
 };

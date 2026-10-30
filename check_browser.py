@@ -10,6 +10,7 @@ with tempfile.TemporaryDirectory() as directory:
     server.DB=Path(directory)/'browser.sqlite3'
     server.initialize()
     p=server.new_project('Example software project','Software')
+    p['nextAction']='Outline the first milestone'
     p['suggestion']={'text':'Outline the first milestone','reason':'No milestone chosen yet.','source':'Project setup'}
     p['chats']=[{'id':'test-chat','title':'Example planning conversation','url':'codex://threads/test-chat','at':'2026-10-29T09:00:00+00:00'}]
     server.event(p,'2026-10-29T09:00:00+00:00','Example planning conversation','Codex chat activity','codex:test-chat')
@@ -26,7 +27,7 @@ with tempfile.TemporaryDirectory() as directory:
             page.goto(f'http://127.0.0.1:{http.server_port}')
             page.wait_for_load_state('networkidle')
             card=page.locator('article.project').filter(has=page.get_by_role('heading',name='Example software project',exact=True))
-            card.get_by_role('button',name='Accept',exact=True).click()
+            expect(card.get_by_role('button',name='Change',exact=True)).to_have_count(0)
             expect(card.locator('.next')).to_contain_text('Outline the first milestone')
             expect(card.locator('.activity')).to_contain_text('Example planning conversation')
             card.get_by_role('button',name='Mark done manually',exact=True).click()

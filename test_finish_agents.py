@@ -36,7 +36,7 @@ class FakeRunner:
             return {'summary': 'Fixed form.', 'changedFiles': ['form.py'], 'checks': [check()], 'limitations': []}
         if role == 'boss-report':
             return {'grade': 'A', 'summary': 'Ready after checks.', 'ready': True, 'findings': [],
-                    'checks': [check()], 'limitations': [], 'fixPrompt': ''}
+                    'checks': [check()], 'limitations': [], 'fixPrompt': '', 'rerunRecommendation':{'when':'After material project changes.','why':'Refresh readiness evidence after behavior changes.','conditions':[]}}
         return {'summary': 'Inspected.', 'applicable': True,
                 'findings': [finding()] if self.issue and 'round 1.' in kwargs['prompt'] else [],
                 'checks': [check('not-run' if self.limits else 'passed')],

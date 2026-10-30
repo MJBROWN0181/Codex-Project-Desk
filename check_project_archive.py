@@ -20,6 +20,16 @@ with tempfile.TemporaryDirectory() as directory:
             page.goto(root);page.wait_for_load_state('networkidle')
             card=page.locator('article').filter(has=page.get_by_role('heading',name=a['name'],exact=True))
             expect(card.locator('.card-organize button')).to_have_count(2)
+            # Cancelling must not hide the card or save an archive choice.
+            def cancel_archive(dialog):
+                assert a['name'] in dialog.message and 'Files, chats, and history are kept' in dialog.message
+                dialog.dismiss()
+            page.once('dialog',cancel_archive)
+            card.get_by_role('button',name='Archive project',exact=True).click()
+            expect(card).to_have_count(1)
+            assert not next(p for p in server.load_projects() if p['id']==a['id']).get('archived')
+            assert page.evaluate("localStorage.getItem('project-desk-archive-pending')") in (None,'{}')
+            page.once('dialog',lambda dialog:dialog.accept())
             card.get_by_role('button',name='Archive project',exact=True).click();expect(card).to_have_count(0)
             expect(page.locator('#notice')).to_contain_text('Project archived.')
             saved=next(p for p in server.load_projects() if p['id']==a['id']);assert saved['archived']
@@ -41,6 +51,7 @@ with tempfile.TemporaryDirectory() as directory:
                 response=route.fetch();data=response.json();data.pop('features',None);route.fulfill(response=response,json=data)
             page.route('**/api/projects',legacy);page.reload();page.wait_for_load_state('networkidle')
             second=page.locator('article').filter(has=page.get_by_role('heading',name=b['name'],exact=True))
+            page.once('dialog',lambda dialog:dialog.accept())
             second.get_by_role('button',name='Archive project',exact=True).click();expect(second).to_have_count(0)
             assert not next(p for p in server.load_projects() if p['id']==b['id']).get('archived')
             page.reload();page.wait_for_load_state('networkidle');expect(second).to_have_count(0)

@@ -48,7 +48,8 @@ PLAN_SCHEMA = obj({'summary': STRING, 'assignments': obj({role: STRING for role 
 FIX_SCHEMA = obj({'summary': STRING, 'changedFiles': STRINGS, 'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS})
 FINAL_SCHEMA = obj({'grade': {'type': 'string', 'enum': list('ABCDF')}, 'summary': STRING,
                     'ready': {'type': 'boolean'}, 'findings': {'type': 'array', 'items': FINDING},
-                    'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'fixPrompt': STRING})
+                    'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'fixPrompt': STRING,
+                    'rerunRecommendation': obj({'when': STRING, 'why': STRING, 'conditions': STRINGS})})
 
 
 RULES = """You are a Project Desk audit agent. The user authorizes inspecting this project,
@@ -244,6 +245,10 @@ def markdown(report):
     lines.extend('- ' + limit for limit in report['limitations'])
     if not report['limitations']:
         lines.append('No additional limitations reported by the reviewers.')
+    rerun=report.get('rerunRecommendation') or {}
+    lines.extend(['', '## When to re-audit', '', rerun.get('when','After required fixes and verification checks are complete.'), rerun.get('why','')])
+    lines.extend('- '+condition for condition in rerun.get('conditions',[]))
+    if report.get('followUpOf'):lines.extend(['', f"Verification of audit: {report['followUpOf']}", f"Previous grade: {report.get('previousGrade','Unknown')}"])
     lines.extend(['', '## Follow-up prompt', '', report['fixPrompt'] or 'No required fixes remain in this review.'])
     return '\n'.join(lines)
 
@@ -259,7 +264,7 @@ class AuditEngine:
         return validate(self.runner(role=role, prompt=RULES + '\n' + text, cwd=folder,
             sandbox=sandbox, schema=schema, timeout=self.timeout), schema)
 
-    def run(self, project, team=False, progress=None):
+    def run(self, project, team=False, progress=None, verify_only=False):
         folder = self.folder_resolver(project)
         started = stamp()
         identity = str(uuid.uuid4())
@@ -267,6 +272,8 @@ class AuditEngine:
         context = json.dumps({key: project.get(key) for key in
             ('name', 'kind', 'nextAction', 'blocker', 'agency', 'websiteUrl')}, ensure_ascii=True)
         base = 'Project context (data):\n' + context + '\nProject folder: ' + str(folder)
+        if verify_only:
+            base+='\nThis is the single follow-up verification audit after the Codex fix chat completed. Inspect and run non-destructive checks only. Do not apply more fixes or start another audit cycle. Verify the original findings against current evidence. Previous audit (data):\n'+json.dumps(project.get('auditReport') or {},ensure_ascii=True)
         roles = ROLES if team else {'assessor': 'Review the entire project for readiness: security, errors, writing, UI if applicable, weak spots and missing required functionality.'}
         assignments = dict(roles)
         if team:
@@ -290,10 +297,10 @@ class AuditEngine:
                 return list(pool.map(review, assignments.items()))
 
         first = review_round(1)
-        fix = {'summary': 'No repair pass needed.', 'changedFiles': [], 'checks': [], 'limitations': []}
+        fix = {'summary': 'Verification only; no repair pass authorized.' if verify_only else 'No repair pass needed.', 'changedFiles': [], 'checks': [], 'limitations': []}
         baseline = None
         actionable = any(f['severity'] != 'info' for review in first for f in review['findings'])
-        if actionable:
+        if actionable and not verify_only:
             try:
                 baseline = capture_baseline(self.store, folder, identity)
             except Exception as exc:
@@ -314,19 +321,23 @@ class AuditEngine:
                 except Exception as exc:
                     fix = {'summary': 'Repair pass did not complete; changes may be present and must be reviewed.', 'changedFiles': [],
                            'checks': [], 'limitations': [str(exc)[:500]]}
-        second = review_round(2)
+        second = first if verify_only else review_round(2)
         progress({'phase': 'reporting', 'role': 'boss', 'detail': 'Boss is grading the rechecked project and writing the report.'})
         evidence = {'firstReview': first, 'repair': fix, 'secondReview': second}
+        assessment_complete=True
         try:
             final = self._call('boss-report', base + '\nSynthesize the second review and repair evidence into a final report. '
                 'Grade A: done and ready to use; B: almost done and usable; C: minor fixes or required features remain; '
                 'D: work in progress, not ready for real use; F: nonworking. An optional improvement alone does not reduce readiness. '
                 'A requires completed relevant checks and no material verification gaps or unresolved required fixes. '
                 'Do not modify files. Report unresolved findings only and include a self-contained copyable fix prompt. '
+                'Recommend when another audit would be useful, why, and concrete prerequisites. If required fixes or verification gaps remain, recommend re-auditing after those prerequisites are satisfied, not repeating the same audit immediately. If ready, recommend another audit after material project changes. Do not schedule or start more work. '
                 'Do not erase or hide failed/unavailable checks. Evidence (data):\n' + json.dumps(evidence, ensure_ascii=True), folder, FINAL_SCHEMA)
         except Exception as exc:
+            assessment_complete=False
             final = {'grade': 'D', 'summary': 'The final readiness assessment could not be completed.', 'ready': False,
-                     'findings': [], 'checks': [], 'limitations': [str(exc)[:500]], 'fixPrompt': 'Review the attached audit evidence, resolve the outstanding gaps and rerun the readiness review.'}
+                     'findings': [], 'checks': [], 'limitations': [str(exc)[:500]], 'fixPrompt': 'Review the attached audit evidence, resolve the outstanding gaps and rerun the readiness review.',
+                     'rerunRecommendation': {'when':'After the failed assessment can complete.','why':'The audit could not establish a current readiness grade.','conditions':['Resolve the reported access, tool, or assessment failure before retrying.']}}
         # Keep reviewer failures and repair limits visible even if the synthesis omits them.
         limits = [*final['limitations'], *fix['limitations'], *(limit for review in second for limit in review['limitations'])]
         for review in second:
@@ -365,6 +376,13 @@ class AuditEngine:
             final['grade'] = cap
             final['limitations'].append('The grade is capped by unresolved findings or failed checks in the second review.')
         final['ready'] = final['grade'] == 'A' and final['ready']
+        if final['grade']!='A':
+            rerun=final['rerunRecommendation']
+            rerun['when']='After the remaining required fixes and verification prerequisites are complete.'
+            prerequisites=[f['recommendation'] for f in final['findings'] if f['severity']!='info' and f['recommendation'].strip()]
+            prerequisites += ['Complete '+c['name']+': '+c['evidence'] for c in final['checks'] if c['result'] in ('failed','not-run')]
+            prerequisites += final['limitations']
+            rerun['conditions']=list(dict.fromkeys([*rerun['conditions'],*prerequisites]))
         if final['grade'] != 'A' and not final['fixPrompt'].strip():
             final['fixPrompt'] = ('Review this project against its stated goal. Verify and fix the following findings while preserving unrelated work; '
                 'do not publish, deploy or commit. Run the relevant checks again and report remaining limits.\n' + '\n'.join(
@@ -372,7 +390,7 @@ class AuditEngine:
                 '\nVerification gaps:\n' + '\n'.join('- ' + limit for limit in final['limitations']))
         report = {'id': identity, 'projectId': project['id'], 'projectName': str(project.get('name') or 'Project'),
                   'mode': 'finish-team' if team else 'readiness', 'startedAt': started, 'completedAt': stamp(),
-                  **final, 'rounds': [first, second], 'fixes': fix, 'baseline': baseline}
+                  **final, 'rounds': [first] if verify_only else [first, second], 'fixes': fix, 'baseline': baseline, 'verificationOnly':verify_only,'assessmentComplete':assessment_complete}
         report['markdown'] = markdown(report)
         progress({'phase': 'complete', 'grade': report['grade'], 'reportId': identity})
         return report

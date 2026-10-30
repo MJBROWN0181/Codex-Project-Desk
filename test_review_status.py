@@ -21,7 +21,7 @@ class ReviewStatusTests(unittest.TestCase):
         server.save(p);return p
 
     def test_review_actions_clear_label_without_fabricating_activity(self):
-        for action in ('accept','dismiss','reviewed'):
+        for action in ('dismiss','reviewed'):
             p=self.imported();updated=server.update(dict(id=p['id'],action=action))
             self.assertEqual(updated['status'],'Active');self.assertTrue(updated['reviewedAt'])
             self.assertEqual(updated['activity'],p['activity'])
