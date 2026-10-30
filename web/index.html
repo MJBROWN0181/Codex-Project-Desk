@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Desk</title><link rel="icon" href="/favicon.ico"><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><a class="brand" href="/">Project Desk<span>Version 1.0.0</span></a><div class="header-actions"><button id="theme-toggle" type="button" role="switch" aria-checked="true">Dark mode: on</button><button id="add">+ Add project</button></div></header>
+<main>
+<section class="intro"><div><h1>Keep every project moving.</h1><p>One clear next step, wherever you left off.</p></div><button id="refresh">Refresh Codex index</button></section>
+<p id="source" class="source"></p>
+<div class="toolbar"><label class="search">Find a project<input id="search" type="search" placeholder="Search projects, actions, or blockers"></label><label>Status<select id="status"><option value="">All statuses</option><option>Unreviewed</option><option>Active</option><option>Waiting</option><option>Paused</option><option>Complete</option></select></label><label>Type<select id="kind"><option value="">All projects</option><option>Software</option><option>Business</option><option>Mixed</option><option>Website</option><option>App</option><option>Documents Render</option></select></label><label>Sort<select id="sort"><option value="recent">Last worked on</option><option value="name">Project name</option></select></label></div>
+<div class="list-heading"><h2>Your projects <span id="count"></span></h2><p>Suggestions stay separate until you accept them.</p></div>
+<section id="projects" class="projects" aria-label="Projects"></section>
+</main>
+<div id="notice" role="status" aria-live="polite"></div>
+<dialog id="editor"><form id="project-form"><div class="dialog-heading"><h2 id="editor-title">Edit project</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div><label>Project name<input name="name" required maxlength="160"></label><div class="pair"><label>Type<select name="kind" aria-label="Type"><option>Software</option><option>Business</option><option>Mixed</option><option>Website</option><option>App</option><option>Documents Render</option></select></label><label>Status<select name="status" aria-label="Status"><option>Unreviewed</option><option>Active</option><option>Waiting</option><option>Paused</option><option>Complete</option></select></label></div><label id="agency-field" hidden>Local agency<input name="agency" list="agency-options" maxlength="200" placeholder="Choose an agency or enter a new one"><datalist id="agency-options"></datalist></label><label>Next action<textarea name="nextAction" rows="3" maxlength="3000" placeholder="A concrete step you can take next"></textarea></label><label>What’s blocking it?<textarea name="blocker" rows="2" maxlength="3000" placeholder="Leave blank if nothing is blocking you"></textarea></label><label>GitHub repository<input name="repo" placeholder="owner/repository"></label><section id="editor-chats" class="editor-chats"></section><p class="hint">Saving project details does not change “Last worked on.” Log planning or progress to record activity.</p><div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Save project</button></div></form></dialog>
+<dialog id="logger"><form id="log-form"><div class="dialog-heading"><h2>What did you work on?</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div><p id="log-project"></p><label>Planning or progress<textarea name="note" rows="5" required maxlength="3000" placeholder="For example: chose the first milestone and outlined the signup flow"></textarea></label><div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Log activity</button></div></form></dialog>
+
+<dialog id="mover"><form id="move-form">
+  <div class="dialog-heading"><h2>Move a chat</h2><button type="button" class="quiet close" aria-label="Close dialog">x</button></div>
+  <label>Chat<select name="threadId" aria-label="Chat" required></select></label>
+  <label>Destination project<select name="targetProjectId" aria-label="Destination project" required></select></label>
+  <label class="check-label"><input type="checkbox" name="native" checked>Also prepare the move in Codex</label>
+  <p id="move-help" class="hint">The tracker moves its link and activity immediately. Moving the actual chat in Codex requires pasting the prepared instruction into this chat.</p>
+  <div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Move in tracker</button></div>
+</form></dialog>
+<dialog id="move-result"><div class="dialog-heading"><h2>Chat refiled in tracker</h2><button type="button" class="quiet close" aria-label="Close dialog">x</button></div><p id="move-result-note"></p><section id="native-instruction"><label>Paste this instruction into your Codex chat<textarea id="move-instruction" rows="4" readonly></textarea></label><button type="button" id="copy-move">Copy instruction</button><p class="hint">The actual Codex move is still pending. Copying this instruction does not complete it.</p></section></dialog>
+
+<dialog id="completer"><form id="complete-form">
+  <div class="dialog-heading"><h2>Mark next action done</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
+  <p id="complete-project"></p><div class="completion-current"><strong>Completing</strong><p id="complete-action-text"></p></div>
+  <label>Completion note (optional)<textarea name="note" rows="2" maxlength="3000" placeholder="What changed or what did you finish?"></textarea></label>
+  <label>Next action (optional)<textarea name="nextAction" rows="3" maxlength="3000" placeholder="Enter the next concrete step, or leave blank to decide later"></textarea></label>
+  <p class="hint">This records the completed action and updates Last worked on. The project's status and blockers stay as you set them.</p>
+  <div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Mark done</button></div>
+</form></dialog>
+</body></html>
