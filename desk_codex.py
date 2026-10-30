@@ -212,6 +212,8 @@ class DeskCodex:
             answer=json.loads(output.read_text(encoding='utf-8'))
         if not all(isinstance(answer.get(k),str) and answer[k].strip() for k in ('action','reason')):
             raise CodexError('The agent returned an incomplete recommendation. You can enter your own next step.')
+        with self.store.MUTATION_LOCK:
+            current=self.project(p['id']);self.store.mark_reviewed(current);self.store.save(current)
         return dict(action=answer['action'],reason=answer['reason'],threadId=identity,title=t.get('name') or 'Codex chat',generatedAt=self.store.now())
 
     def _receipt(self,identity,**changes):
@@ -278,6 +280,7 @@ class DeskCodex:
                 status='working',createdAt=self.store.now(),managed=True)
             receipts[request]=receipt
             p['workState']=dict(phase='sending',threadId=identity,requestId=request,kind=kind,startedAt=self.store.now(),detail='Sending reviewed work to Codex.')
+            self.store.mark_reviewed(p)
             p['suggestion']=None;p['needsRecommendation']=False
             if kind=='wrap':p['wrapRequested']=False
             for item in p.get('contentQueue',[]):

@@ -43,6 +43,7 @@ class WorkControl:
             if sum(i['state'] in ('pending', 'dispatching') for i in items) >= 100:
                 raise ValueError('This project already has 100 queued additions.')
             items.append(dict(id=identity, text=text, state='pending', at=self.store.now()))
+            self.store.mark_reviewed(p)
             self.store.save(p)
         return p
 
@@ -88,6 +89,7 @@ class WorkControl:
                     ProjectOps(self.store).folder(p)
                     p['workState'] = dict(phase='operation', operation=action, id=str(uuid.uuid4()), startedAt=self.store.now(), detail='Starting '+action)
                     p['suggestion'] = None
+                    self.store.mark_reviewed(p)
             else: raise ValueError('Unknown project control.')
             self.store.save(p)
         if action == 'health':
@@ -180,6 +182,7 @@ class WorkControl:
                     elif active:
                         if current.get('phase') not in ('sending','queued') or (turn and turn['id']==active['id']):
                             current.update(phase='working',threadId=target,turnId=active['id'],detail='Codex is working on this project.')
+                            self.store.mark_reviewed(p)
                             p['workState']=current;p['suggestion']=None;self.store.save(p)
                         continue
                     elif receipt and not turn:

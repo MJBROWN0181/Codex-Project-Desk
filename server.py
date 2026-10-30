@@ -58,6 +58,29 @@ def order_activity(p):
 def now():
     return datetime.now(timezone.utc).isoformat()
 
+def mark_reviewed(p):
+    """Review changes classification, not the project's last-worked timestamp."""
+    if p.get('status') == 'Unreviewed':
+        p['status'] = 'Active'
+        p['reviewedAt'] = now()
+
+@serialized
+def reconcile_review_statuses():
+    """Repair legacy stuck labels once, using actual saved review evidence."""
+    if metadata('reviewStatusMigration1'):return 0
+    receipts=metadata('codexMessages') or {}
+    changed=0
+    for p in load_projects():
+        evidence=(p.get('nextAction') or p.get('actionDraft') or p.get('completedActions') or
+                  p.get('auditReport') or p.get('workState') or p.get('dismissedSetup') or
+                  (p.get('suggestion') or {}).get('source')=='Codex agent' or
+                  any(a.get('source') in ('Manual update','Completed action','Codex request','Codex completion') for a in p['activity']) or
+                  any(r.get('projectId')==p['id'] for r in receipts.values()))
+        if p['status']=='Unreviewed' and evidence:
+            mark_reviewed(p);save(p);changed+=1
+    metadata('reviewStatusMigration1',dict(at=now(),updated=changed))
+    return changed
+
 @contextmanager
 def connect():
     db = sqlite3.connect(DB, timeout=20)
@@ -245,6 +268,7 @@ def update(payload):
     if busy(p) and set(payload)-{'id','pinned'}:
         raise ValueError('This project is working. Add content to its queue instead of changing project details.')
     previous_action=p.get('nextAction','')
+    previous_status=p['status']
     if 'pinned' in payload:
         if not isinstance(payload['pinned'],bool):raise ValueError('Pinned must be true or false.')
         p['pinned']=payload['pinned']
@@ -277,6 +301,9 @@ def update(payload):
         if not note or len(note) > 3000:
             raise ValueError('Describe what you worked on in up to 3,000 characters.')
         event(p, now(), note, 'Manual update', str(uuid.uuid4()))
+    if previous_status=='Unreviewed' and (action in ('accept','dismiss','log','reviewed') or
+            set(payload)&{'name','kind','nextAction','blocker','repo','agency','path','websiteUrl'}):
+        mark_reviewed(p)
     save(p)
     return p
 
@@ -296,7 +323,10 @@ def save_draft(payload):
             if not isinstance(value,str) or len(value)>limit:raise ValueError('Draft text is too long.')
             clean[key]=value
         draft={**clean,'updatedAt':now()}
-    p['actionDraft']=draft;p['draftRevision']=revision+1;save(p)
+    p['actionDraft']=draft;p['draftRevision']=revision+1
+    if draft and any(draft.get(k,'').strip() for k in ('action','reason','instructions')):
+        mark_reviewed(p)
+    save(p)
     return dict(draft=draft,revision=p['draftRevision'])
 
 @serialized
@@ -327,6 +357,7 @@ def complete_action(payload):
         if payload.get('expectedAction') != current:
             raise ValueError('The next action changed. Refresh the project and complete its current action.')
         stamp = now()
+        mark_reviewed(p)
         completed.insert(0, dict(id=request_id, action=current, at=stamp, note=note.strip()))
         event(p, stamp, 'Completed: ' + current + ('\n' + note.strip() if note.strip() else ''),
               'Completed action', 'completed:' + request_id)
@@ -477,6 +508,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8789)
     args = parser.parse_args()
     initialize()
+    reconcile_review_statuses()
     if not metadata('codex') and (EXPORT.exists() or INDEX.exists()):
         sync_codex()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
