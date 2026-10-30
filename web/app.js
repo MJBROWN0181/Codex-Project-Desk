@@ -1,7 +1,10 @@
-let projects = [], editing = null, logging = null, moving = null, chatAssignments = {}, completing = null;
+let projects = [], editing = null, logging = null, moving = null, chatAssignments = {}, completing = null, codexMessages = {};
 const $ = s => document.querySelector(s);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateText = value => value ? new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : 'No activity recorded';
+function deliveryLabel(receipt){
+  return ({working:'Sending to Codex…',queued:'Queued in Codex',received:'Received by Codex',failed:'Send failed',unknown:'Delivery needs checking'})[receipt.status] || receipt.status;
+}
 let noticeTimer;
 function notice(text) { $('#notice').textContent = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(()=>$('#notice').textContent='',6500); }
 async function request(url, body) {
@@ -10,8 +13,10 @@ async function request(url, body) {
 }
 async function load() {
   const data = await request('/api/projects'); projects = data.projects; chatAssignments = data.chatAssignments || {};
+  codexMessages=data.codexMessages || {};
   const sources = data.codex?.sources?.map(s=>`${s.name}: ${dateText(s.at)}`).join(' · ');
   $('#source').textContent = `Codex uses saved activity metadata. ${sources || 'No Codex index imported yet.'} Refresh reads the latest available saved index; it does not fetch live conversations.`;
+  if(data.codexConnections)$('#connection-summary').textContent=`Chat connections: ${data.codexConnections.verified} verified locally, ${data.codexConnections.cloud || 0} cloud references, ${data.codexConnections.unavailable.length} need attention. Checked ${dateText(data.codexConnections.checkedAt)}.`;
   render();
 }
 function render() {
@@ -21,7 +26,7 @@ function render() {
   $('#count').textContent = `${shown.length} of ${projects.length}`;
   $('#projects').innerHTML = shown.map(p=>{
     const e=escapeHtml, a=p.activity[0], s=p.suggestion;
-    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><span class="badge ${e(p.status)}">${e(p.status)}</span></div><div class="card-body"><div class="next"><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}">${e(p.nextAction || 'Choose your next step')}</p>${p.nextAction?'<button class="done-action" data-action="complete">Next action done</button>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}<div class="activity"><h4>Last worked on</h4><strong>${e(dateText(a?.at))}</strong>${a?`<p>${e(a.note)}</p><span class="source-label">${e(a.source)}</span>`:'<p>Log planning or progress to get started.</p>'}${p.activity.length>1?`<details><summary>Recent activity</summary><ol>${p.activity.slice(1,8).map(item=>`<li>${e(item.note)}<br>${e(dateText(item.at))} · ${e(item.source)}</li>`).join('')}</ol></details>`:''}</div>${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map((c,i)=>`<a href="${e(c.url)}" title="${e(c.title)}">${i===0?'Latest Codex chat':'Earlier chat'}</a>`).join('')}</div></div><footer class="card-footer"><button data-action="edit">Edit project</button><button data-action="log">Log activity</button>${p.chats.length?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
+    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><span class="badge ${e(p.status)}">${e(p.status)}</span></div><div class="card-body"><div class="next"><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Next action done</button>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}<div class="activity"><h4>Last worked on</h4><strong>${e(dateText(a?.at))}</strong>${a?`<p>${e(a.note)}</p><span class="source-label">${e(a.source)}</span>`:'<p>Log planning or progress to get started.</p>'}${p.activity.length>1?`<details><summary>Recent activity</summary><ol>${p.activity.slice(1,8).map(item=>`<li>${e(item.note)}<br>${e(dateText(item.at))} · ${e(item.source)}</li>`).join('')}</ol></details>`:''}</div>${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(c.title)}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer"><button data-action="edit">Edit project</button><button data-action="log">Log activity</button>${p.chats.length?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
   }).join('') || '<p class="no-results">No projects match. Change your filters or add a project.</p>';
 }
 function openEditor(project, suggestion=false) {
@@ -87,6 +92,11 @@ $('#projects').onclick=async event=>{
   const button=event.target.closest('button[data-action]'); if(!button) return;
   const p=projects.find(p=>p.id===button.closest('article').dataset.id), action=button.dataset.action;
   if(action==='edit' || action==='change') return openEditor(p,action==='change');
+  if(action==='review')return openActionReview(p);
+  if(action==='receipt'){
+    const receipt=Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    if(receipt){showReceipt(receipt);$('#delivery').showModal();}return;
+  }
   if(action==='move') return openMover(p);
   if(action==='pending') return showMoveResult(chatAssignments[p.chats.find(c=>chatAssignments[c.id]?.nativeStatus==='pending').id]);
   if(action==='complete') {

@@ -1,6 +1,6 @@
 # Codex Project Desk
 
-Project Desk version 1.0.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers editable next actions, activity history, completion tracking, GitHub refresh, saved Codex metadata imports, and a persistent dark/light theme.
+Project Desk version 1.1.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, agent recommendations, reviewed message delivery, and a persistent dark/light theme.
 
 ## Run locally
 
@@ -11,6 +11,18 @@ Personal state in `data/` is excluded from Git: project records, chat exports, s
 ## Checks
 
 Run `python -m unittest -v test_tracker.py` for isolated data tests. For browser checks and icon generation, install `requirements-dev.txt` and Chromium with `python -m playwright install chromium`, then run `python check_browser.py` or `python create_icon.py` as needed.
+
+Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to this installation's existing integration-test chat; it must not be run against an unrelated account or without permission to message that chat.
+
+## Next-action recommendations and Codex delivery
+
+Click a next action to open its review dialog. Project Desk reads recent messages from the selected existing local chat and asks the signed-in Codex CLI for an ephemeral, read-only recommendation and explanation. You can edit the step and reason and add instructions. Nothing is sent until Send to Codex is clicked. The destination is shown explicitly; the preferred linked chat is selected when available, with an exact workspace-path match as a fallback. You can choose another existing local chat.
+
+Send uses the installed CLI's `codex queue --thread <exact UUID> --message <reviewed text>` command, then opens `codex://threads/<exact UUID>` so the desktop app processes its queue. The app distinguishes a queue acknowledgement from a received message: Received by Codex appears only after the exact user message is found in a new turn in that chat. Receipt reconciliation reads history after slow startup or restart; it never automatically retransmits. Unique request IDs prevent repeat clicks or retries from sending duplicates. Prior matching messages cannot count as new delivery.
+
+The installed Codex CLI and its existing ChatGPT sign-in are required; no separate model API key is used. The destination thread keeps its normal Codex settings. Cloud chats can be opened through their verified links, while automatic recommendation/send targets are local chats. No Codex databases or session files are edited by Project Desk.
+
+Every server startup audits linked local chats with the app-server protocol and canonicalizes their links and titles. Opening a local chat or sending to one revalidates its exact ID. Check chat connections runs the full audit again. Cloud references are shown separately from locally verified chats. Legacy ID repairs are kept in the local metadata so an old snapshot cannot restore a broken ID.
 
 ## Desktop setup and local integrations
 

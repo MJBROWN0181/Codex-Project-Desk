@@ -195,5 +195,20 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(saved['chats'][0]['title'],'Newer title')
         self.assertEqual(saved['activity'][0]['note'],'Newer title')
 
+    def test_snapshot_keeps_repaired_alias_and_verified_connection(self):
+        p=server.new_project('Correct project',identity='right-project')
+        p['chats']=[dict(id='correct-chat',title='Correct title',url='codex://threads/correct-chat',
+            at=server.utc_stamp('2026-10-29T10:00:00Z'),connectionStatus='verified',checkedAt='2026-10-29T11:00:00Z')]
+        server.save(p)
+        server.metadata('chatAliases',{'bad-chat':dict(id='correct-chat',projectId=p['id'],title='Correct title')})
+        server.EXPORT.write_text(json.dumps({'checkedAt':'2026-10-29T12:00:00Z','threads':[
+            dict(id='bad-chat',projectId='wrong-project',kind='codex',updatedAt='2026-10-29T10:00:00Z',title='Wrong title')]}),encoding='utf-8')
+        server.sync_codex()
+        saved=next(x for x in server.load_projects() if x['id']==p['id'])
+        self.assertEqual(len(saved['chats']),1)
+        self.assertEqual(saved['chats'][0]['id'],'correct-chat')
+        self.assertEqual(saved['chats'][0]['connectionStatus'],'verified')
+        self.assertEqual(saved['chats'][0]['title'],'Correct title')
+
 if __name__=='__main__':
     unittest.main()

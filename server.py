@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import subprocess
 import threading
+import sys
 from urllib.parse import urlparse
 import uuid
 
@@ -25,6 +26,15 @@ EXPORT = ROOT / 'data/codex-export.json'
 STATUSES = ('Unreviewed', 'Active', 'Waiting', 'Paused', 'Complete')
 KINDS = ('Software', 'Business', 'Mixed', 'Website', 'App', 'Documents Render')
 MUTATION_LOCK = threading.RLock()
+CODEX_SERVICE = None
+
+def codex_service():
+    global CODEX_SERVICE
+    with MUTATION_LOCK:
+        if CODEX_SERVICE is None:
+            from desk_codex import DeskCodex
+            CODEX_SERVICE = DeskCodex(sys.modules[__name__])
+        return CODEX_SERVICE
 
 def serialized(function):
     @wraps(function)
@@ -127,6 +137,7 @@ def sync_codex():
     ignored = {'clean', 'organize us', 'mjbro', 'v1.0'}
     imported = set()
     overrides = metadata('chatAssignments') or {}
+    aliases = metadata('chatAliases') or {}
     # Older snapshot first; the most recent export wins for project metadata.
     for stamp, label, d in sources:
         for row in d.get('projects', []):
@@ -144,6 +155,8 @@ def sync_codex():
             imported.add(identity)
         chats = d.get('chats', []) + d.get('pinnedThreads', []) + d.get('threads', [])
         for chat in chats:
+            alias=aliases.get(chat.get('id'))
+            if alias:chat={**chat,'id':alias['id'],'projectId':alias['projectId'],'title':alias['title']}
             assigned = overrides.get(chat.get('id'), {}).get('targetProjectId', chat.get('projectId'))
             p = projects.get(assigned)
             if not p or chat.get('kind') != 'codex':
@@ -159,7 +172,8 @@ def sync_codex():
                 continue
             title = chat.get('title') or 'Project conversation'
             event(p, date, title, 'Codex chat activity', 'codex:' + chat['id'])
-            link = dict(id=chat['id'], title=title, url='codex://threads/' + chat['id'], at=date, observedAt=observed)
+            link = dict(known or {},id=chat['id'], title=title, url='codex://threads/' + chat['id'], at=date, observedAt=observed,
+                        hostId=chat.get('hostId') or chat.get('host') or 'local')
             # Remove stale placement before applying the latest source or manual assignment.
             for other in projects.values():
                 if other['id'] != p['id']:
@@ -347,9 +361,17 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == '/api/projects':
             return self.json_response(dict(projects=load_projects(), codex=metadata('codex'),
-                                           chatAssignments=metadata('chatAssignments') or {}))
+                                           chatAssignments=metadata('chatAssignments') or {},
+                                           codexConnections=metadata('codexConnections'),codexMessages=metadata('codexMessages') or {}))
+        if route.startswith('/api/codex/jobs/'):
+            try:return self.json_response(codex_service().job(route.rsplit('/',1)[1]))
+            except ValueError as exc:return self.json_response({'error':str(exc)},404)
+        if route == '/api/codex/threads':
+            try:return self.json_response(dict(chats=codex_service().native_chats()))
+            except (ValueError,OSError,subprocess.TimeoutExpired) as exc:return self.json_response({'error':str(exc)},400)
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
-                 '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript')}
+                 '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript'),
+                 '/actions.js': ('actions.js','text/javascript')}
         if route not in files:
             return self.json_response({'error':'Not found'}, 404)
         name, mime = files[route]
@@ -377,6 +399,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = sync_codex()
             elif self.path == '/api/move-chat':
                 result = move_chat(body)
+            elif self.path == '/api/codex/check':
+                service=codex_service();result=service.start_job(service.audit)
+            elif self.path == '/api/codex/open':
+                result=codex_service().open_chat(body)
+            elif self.path == '/api/codex/recommend':
+                service=codex_service();result=service.start_job(lambda:service.recommendation(body))
+            elif self.path == '/api/codex/send':
+                result=codex_service().send(body)
             elif self.path == '/api/github':
                 p = next((p for p in load_projects() if p['id'] == body.get('id')), None)
                 if not p:
@@ -396,5 +426,7 @@ if __name__ == '__main__':
     if not metadata('codex') and (EXPORT.exists() or INDEX.exists()):
         sync_codex()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+    service=codex_service();service.start_job(service.audit)
+    threading.Thread(target=service.watch_receipts,daemon=True).start()
     print(f'Project tracker: http://127.0.0.1:{args.port}', flush=True)
     server.serve_forever()
