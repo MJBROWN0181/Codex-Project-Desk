@@ -527,6 +527,11 @@ class Handler(BaseHTTPRequestHandler):
                 result=codex_service().send_suggestion(body)
             elif self.path == '/api/project/control':
                 result=codex_service().control.control(body)
+            elif self.path == '/api/project/audit-folders':
+                from audit_scope import discover
+                project=next((p for p in load_projects() if p['id']==body.get('projectId')),None)
+                if project is None:raise ValueError('Project was not found.')
+                result=dict(folders=discover(sys.modules[__name__],project))
             elif self.path == '/api/project/queue':
                 result=codex_service().control.queue(body)
             elif self.path == '/api/drafts':

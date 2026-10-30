@@ -301,7 +301,9 @@ class DeskCodex:
             p=self.project(p['id'])
             if new_audit:
                 from project_ops import ProjectOps
-                audit_folder=str(ProjectOps(self.store).folder(p))
+                from audit_scope import choose
+                selected_folders=choose(self.store,p,body.get('auditFolders'))
+                audit_folder=selected_folders[0] if selected_folders else str(ProjectOps(self.store).folder(p))
                 source_key=body.get('auditSourceKey')
                 source_report=p.get('auditReport') or {}
                 if source_key is not None and (not isinstance(source_key,str) or source_key!=(source_report.get('id') or source_report.get('completedAt') or source_report.get('checkedAt'))):
@@ -318,7 +320,7 @@ class DeskCodex:
                 status='working',createdAt=self.store.now(),managed=True,preserveActionDraft=body.get('preserveActionDraft',False))
             receipts[request]=receipt
             if kind=='suggestion':receipt['acceptedSuggestion']=body['acceptedSuggestion']
-            if new_audit:receipt.update(newAuditChat=True,cwd=audit_folder,title='Audit',note='Creating a new Audit chat in the project folder.')
+            if new_audit:receipt.update(newAuditChat=True,cwd=audit_folder,auditFolders=selected_folders,title='Audit',note='Creating a new Audit chat in the selected project folder.')
             if new_audit and source_key:
                 if source_report.get('mode') not in ('readiness','finish-team'):
                     raise ValueError('This older report has no saved audit mode. Run a new project audit before sending fixes for automatic re-auditing.')

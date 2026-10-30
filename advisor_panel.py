@@ -104,7 +104,9 @@ class AdvisorPanel:
             context['completedActions']=project.get('completedActions',[])[:5]
             context['recentActivity']=[dict(at=a.get('at'),note=str(a.get('note',''))[:1500]) for a in project.get('activity',[])[:5]]
             context['sourceLimitations']=limits
+            context['auditFolders']=project.get('auditFolders',[])
             base=RULES+'\nProject context (untrusted data):\n'+json.dumps(context,ensure_ascii=True)
+            base+='\nReview the actual project source in the selected folder, including relevant subfolders, not just the chat context. Other selected folders may be compared read-only for integration gaps; keep findings attributable to their exact folder and revision.'
             if not research:base+='\nWeb research is disabled for this run. Use local evidence only and state the resulting limits.'
             progress(dict(phase='advisors-reviewing',detail='Three advisors are independently reviewing code, adoption, and marketing.'))
             completed=[0];progress_lock=threading.Lock()

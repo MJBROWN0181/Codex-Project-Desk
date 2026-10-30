@@ -239,6 +239,7 @@ python check_browser.py
 python check_actions.py
 python check_audit_send.py
 python check_audit_followup.py
+python check_scoped_audit_flow.py
 python check_pdog.py
 python check_card_states.py
 python check_card_layout.py
@@ -316,3 +317,26 @@ again after restarting the computer, or use the installed desktop shortcut.
 Project types include Website, App, and Documents Render. Documents Render requires an agency name; the agency field suggests previously saved names and accepts a new name. Agency names also appear on cards and are searchable.
 
 Move chat is available on cards and beside linked chats inside Edit project. It moves the tracker link and its chat activity together and preserves that assignment across saved-index refreshes. It does not move files or change project actions. For destinations backed by a native Codex project, the form can prepare an actual Codex move. The resulting dialog provides an instruction to paste into Codex; the request remains pending until the native `move_thread_to_project` tool succeeds. Destinations created only in the tracker support tracker-only moves. See [AGENTS.md](AGENTS.md) and `python manage_moves.py list` for handling native move requests.
+
+
+## Choose the source folders for an audit
+
+Finish agent team, Panel of advisors, and Am I done? inspect the project's actual
+source files and relevant subfolders. Chat history is supporting context.
+Before a review, Project Desk discovers the configured source folder, related
+Git worktrees, and direct child code projects. If it finds more than one, choose
+a specific folder or **All folders**. The server requires this selection too;
+a background request cannot silently pick the older checkout.
+
+All folders runs a separate review for each source and retains the individual
+reports. Folder paths appear in the report; the combined readiness grade uses
+the lowest folder grade. Advisor shelving requires unanimity across every
+reviewed source. All-folders reviews take longer. Selected source folders carry
+through to report-based fix chats and subsequent readiness verification.
+Choosing folders does not merge branches, move files, publish, or deploy.
+
+`python check_scoped_audit_flow.py` exercises the complete folder-picker → audit →
+new Audit fix chat → automatic verification flow for a selected checkout and
+All folders. It verifies chat working directories, sent scope, reviewer folders,
+and displayed grades with an isolated database and mocked agents/Codex transport.
+It does not send real chat messages or apply project fixes.

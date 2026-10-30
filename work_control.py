@@ -92,8 +92,13 @@ class WorkControl:
                     # Network check runs outside the mutation lock below.
                 else:
                     from project_ops import ProjectOps
+                    audit_folders=None
+                    if action in ('assess','finish-team','advisors'):
+                        from audit_scope import choose
+                        audit_folders=choose(self.store,p,body.get('auditFolders'))
                     if action!='advisors':ProjectOps(self.store).folder(p)
                     p['workState'] = dict(phase='operation', operation=action, id=str(uuid.uuid4()), startedAt=self.store.now(), detail='Starting '+action)
+                    if audit_folders is not None:p['workState']['auditFolders']=audit_folders
                     p['suggestion'] = None
                     self.store.mark_reviewed(p)
             else: raise ValueError('Unknown project control.')
@@ -125,10 +130,14 @@ class WorkControl:
                 result = ProjectOps(self.store).release(p, progress)
             elif action=='advisors':
                 from advisor_panel import AdvisorPanel
-                result=AdvisorPanel(self.store).run(p,progress=progress,research=True)
+                from audit_scope import run_scoped
+                result=run_scoped(p,p['workState'].get('auditFolders',[]),action,lambda scoped:AdvisorPanel(self.store).run(scoped,progress=progress,research=True))
             else:
                 from finish_agents import AuditEngine
-                result = AuditEngine(self.store).run(p, team=action=='finish-team', progress=progress,**({'verify_only':True} if verifying else {}))
+                from audit_scope import run_scoped
+                folders=p['workState'].get('auditFolders')
+                if folders is None and verifying:folders=(p.get('auditReport') or {}).get('auditedFolders',[])
+                result=run_scoped(p,folders or [],action,lambda scoped:AuditEngine(self.store).run(scoped,team=action=='finish-team',progress=progress,**({'verify_only':True} if verifying else {})))
             with self.store.MUTATION_LOCK:
                 p = self.project(identity)
                 if p.get('workState',{}).get('id')!=operation_id:return

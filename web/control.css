@@ -59,3 +59,9 @@
 .audit-rerun{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 6%,transparent)}
 
 .task-progress{border-top:1px solid var(--line);padding-top:10px;margin-top:12px;min-width:0}.task-progress-heading{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;margin-bottom:7px}.task-progress-heading strong{font-weight:600}.task-progress-heading>span{color:var(--muted)}.task-progress progress{display:block;width:100%;height:8px;accent-color:var(--blue);margin-bottom:8px}.task-progress .hint{font-size:11px;margin:7px 0 0}.task-current-step{font-size:12px;margin:5px 0;overflow-wrap:anywhere}.task-progress-track{height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-bottom:8px}.task-progress-pulse{display:block;width:30%;height:100%;border-radius:4px;background:var(--blue);animation:task-working 1.8s ease-in-out infinite alternate}.task-plan-steps{max-height:190px;overflow:auto;padding:0;list-style:none;font-size:12px}.task-plan-steps li{display:flex;gap:8px;align-items:flex-start;overflow-wrap:anywhere}.task-plan-steps li>span{color:var(--blue);flex:0 0 12px}.task-plan-steps small{display:block;font-size:11px;color:var(--muted);margin-top:3px}@keyframes task-working{to{transform:translateX(233%)}}@media(prefers-reduced-motion:reduce){.task-progress-pulse{animation:none}}
+
+.audit-folder-picker{width:min(760px,94vw)}
+.audit-folder-option{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:8px;margin:10px 0}
+.audit-folder-option input{width:auto;margin-top:5px;flex-shrink:0}
+.audit-folder-option span{min-width:0}.audit-folder-option small{display:block;overflow-wrap:anywhere}
+.audit-source-folders li{overflow-wrap:anywhere}

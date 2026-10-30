@@ -173,7 +173,7 @@ $('#action-form').onsubmit=async event=>{
     await flushDraft();
     if(!actionReviewSeed && !form.elements.threadId.value)throw new Error('Choose a Codex chat before sending.');
     const receipt=await request(actionReviewSeed?'/api/codex/send-audit':'/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,...(actionReviewSeed?{}:{threadId:form.elements.threadId.value}),
-      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!(actionReviewSeed || actionSuggestion),...(actionReviewSeed?.auditSourceKey?{auditSourceKey:actionReviewSeed.auditSourceKey}:{})});
+      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!(actionReviewSeed || actionSuggestion),...(actionReviewSeed?.auditFolders?{auditFolders:actionReviewSeed.auditFolders}:{}),...(actionReviewSeed?.auditSourceKey?{auditSourceKey:actionReviewSeed.auditSourceKey}:{})});
     $('#action-review').close();await openDelivery(receipt);
   }catch(error){notice(error.message);}finally{button.disabled=false;}
 };

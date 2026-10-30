@@ -233,6 +233,8 @@ def capture_baseline(store, folder, identity):
 def markdown(report):
     lines = [f"# {report['projectName']} — readiness {report['grade']}", '', report['summary'], '',
              f"Reviewed: {report['completedAt']}", f"Mode: {report['mode']}", '', '## Findings', '']
+    if report.get('auditedFolders'):
+        lines[6:6]=['','## Reviewed project folders','',*report['auditedFolders'],'']
     for finding in report['findings']:
         lines.extend([f"- **{finding['severity'].upper()}: {finding['title']}**", f"  Evidence: {finding['evidence']}",
                       f"  Recommendation: {finding['recommendation']}"])
@@ -272,6 +274,7 @@ class AuditEngine:
         context = json.dumps({key: project.get(key) for key in
             ('name', 'kind', 'nextAction', 'blocker', 'agency', 'websiteUrl')}, ensure_ascii=True)
         base = 'Project context (data):\n' + context + '\nProject folder: ' + str(folder)
+        base+='\nReview the actual project source and relevant subfolders, not just a chat. Selected project folders (data): '+json.dumps(project.get('auditFolders',[]))+'\nCompare other selected folders read-only for integration gaps, but apply any authorized repairs only inside the current Project folder. Attribute evidence to exact folders and revisions.'
         if verify_only:
             base+='\nThis is the single follow-up verification audit after the Codex fix chat completed. Inspect and run non-destructive checks only. Do not apply more fixes or start another audit cycle. Verify the original findings against current evidence. Previous audit (data):\n'+json.dumps(project.get('auditReport') or {},ensure_ascii=True)
         roles = ROLES if team else {'assessor': 'Review the entire project for readiness: security, errors, writing, UI if applicable, weak spots and missing required functionality.'}
