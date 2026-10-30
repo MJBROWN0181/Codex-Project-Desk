@@ -1,6 +1,20 @@
 # Codex Project Desk
 
-Project Desk version 1.2.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers saved message drafts, pinned focus projects, latest Codex replies, editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, reviewed message delivery, and a persistent dark/light theme.
+Project Desk version 2.0.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
+
+## Work, queue, and finishing controls
+
+Sending a reviewed next action immediately reserves the project as working. A delivery receipt means the message arrived; completion waits for the exact Codex turn to report completed. While working, project edits and new suggestions are held. Add content saves durable FIFO additions, automatically delivered to the same local chat after completion. The saved final answer updates the card and activity. When the queue is empty, an agent recommends a new step for review; suggestions are never executed automatically. A finished turn does not mean the whole project is complete.
+
+Pause lets the current turn finish and holds queued additions. Resume drains them. Wrap up work schedules a handoff in the same chat after the current turn, then pauses additions. A failed or interrupted turn holds the queue and shows Needs attention. Check work status acknowledges a known failed turn or failed delivery and leaves additions paused for review; ambiguous deliveries are checked without automatic retransmission. Queue receipts and state survive restarts. Interrupted audits/releases are never replayed automatically. Completion checks run about every five seconds; active-chat discovery about every thirty seconds. Local saved Codex history must expose the turn and final status. Cloud chats remain link-only.
+
+Push to GitHub + release commits the project repository's nonignored changes, pushes its current named branch, creates the next annotated patch-version tag, publishes a GitHub release, and verifies publication. This button publishes; it does not create a draft. It validates the configured repository and all push destinations, checks obvious credential files and private keys, rejects behind/diverged branches, and preserves partial progress on failure. No force push, reset, stash, or cleanup is used. A clean unchanged retry resumes its saved incomplete release after checking tag identity. Git and signed-in GitHub CLI access are required. Set the actual local project folder and owner/repository in Edit project first.
+
+Am I done? inspects the actual folder, applies focused required fixes, and reviews again. Finish agent team adds a boss coordinating six specialist reviews: security, errors, writing/AI slop, desktop/mobile UI when applicable, weak spots, and improvements. Specialists inspect independently with at most three running at once; only the boss's repair pass writes files. Existing edits get a local recovery baseline before repairs. Missing access, failed checks, and untested device/authenticated flows stay visible. Agents do not publish, deploy, commit, or send messages as part of reviews. Reports and copyable follow-up prompts are saved locally in data/reports; recovery baselines stay in data/audit-baselines. Review work can take several minutes and progress is shown on the card.
+
+Grades: A ready to use; B almost done and usable; C minor fixes or required features remain; D work in progress and not ready for real use; F not working. A requires supporting checks and no material gaps. Optional improvements alone do not prevent an A. Automated review is bounded to one repair/recheck cycle; unresolved findings stay in the report.
+
+Website projects can have a configured HTTP(S) URL. Up/Down shows the latest bounded HTTP check with its timestamp and response code; checks run roughly once per minute and through Check site. This is a point-in-time check from this computer, not a global uptime guarantee.
 
 ## Drafts, focus, and latest replies
 
@@ -8,7 +22,7 @@ Review fields autosave as an unsent project draft, including the selected chat, 
 
 Pin projects from their cards to keep them first. Focus list shows pinned projects using the current filters and sort; Show all projects returns to the full list. Pins are stored with project data, and the selected view is remembered in the browser.
 
-Latest Codex reply shows saved final assistant text from the preferred linked local chat (or the most recent linked local chat), with the actual chat title, reply date, and expandable text. Commentary, reasoning, and tool output are excluded. Replies refresh on startup, about every 30 seconds while the server is running, and through the top Refresh button. These reads do not mark work complete or change Last worked on. Visible idle project lists also refresh every 30 seconds; open forms, expanded details, and selected text are left alone. Cloud chat references remain links rather than automatic local reply sources.
+Latest Codex reply shows saved final assistant text from the preferred linked local chat (or the most recent linked local chat), with the actual chat title, reply date, and expandable text. Commentary, reasoning, and tool output are excluded. Replies refresh on startup, about every 30 seconds while the server is running, and through the top Refresh button. These reads do not mark work complete or change Last worked on. Visible idle project lists also refresh every five seconds; open forms, expanded details, and selected text are left alone. Cloud chat references remain links rather than automatic local reply sources.
 
 Refresh beside the title updates saved project data without resetting the current search, filters, sort, or theme. Returning focus to the window also refreshes the list when no dialog is open, keeping in-progress form edits intact. Codex index import and connection checks retain their separate controls.
 

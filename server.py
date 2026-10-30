@@ -16,6 +16,7 @@ import threading
 import sys
 from urllib.parse import urlparse
 import uuid
+from project_ops import ProjectOperationError
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('PROJECT_TRACKER_DATA', str(ROOT / 'data')))
@@ -77,6 +78,8 @@ def load_projects():
         return [json.loads(row['document']) for row in db.execute('SELECT document FROM projects')]
 
 def save(p):
+    from work_control import busy
+    if busy(p):p['suggestion']=None
     order_activity(p)
     with connect() as db:
         db.execute('INSERT OR REPLACE INTO projects VALUES (?,?)', (p['id'], json.dumps(p)))
@@ -238,11 +241,14 @@ def update(payload):
     p = next((p for p in load_projects() if p['id'] == identity), None) if identity else new_project('New project')
     if not p:
         raise ValueError('Project was not found.')
+    from work_control import busy
+    if busy(p) and set(payload)-{'id','pinned'}:
+        raise ValueError('This project is working. Add content to its queue instead of changing project details.')
     previous_action=p.get('nextAction','')
     if 'pinned' in payload:
         if not isinstance(payload['pinned'],bool):raise ValueError('Pinned must be true or false.')
         p['pinned']=payload['pinned']
-    for key in ('name','kind','status','nextAction','blocker','repo','agency'):
+    for key in ('name','kind','status','nextAction','blocker','repo','agency','path','websiteUrl'):
         if key in payload:
             if not isinstance(payload[key], str) or len(payload[key]) > 3000:
                 raise ValueError('Project fields must be text of up to 3,000 characters.')
@@ -254,6 +260,10 @@ def update(payload):
         raise ValueError('Choose or enter the local agency for Documents Render.')
     if p['repo'] and not re.fullmatch(r'[\w.-]+/[\w.-]+', p['repo']):
         raise ValueError('Use owner/name for the GitHub repository.')
+    if p.get('websiteUrl'):
+        site=urlparse(p['websiteUrl'])
+        if site.scheme not in ('http','https') or not site.hostname or site.username or site.password:
+            raise ValueError('Use a complete http:// or https:// website URL without credentials.')
     action = payload.get('action')
     if action == 'accept' and p['suggestion']:
         p['nextAction'] = p['suggestion']['text']
@@ -306,6 +316,8 @@ def complete_action(payload):
         if not row:
             raise ValueError('Project was not found.')
         p = json.loads(row[0])
+        from work_control import busy
+        if busy(p):raise ValueError('Codex is still working. Wait for its completion before marking an action done.')
         completed = p.setdefault('completedActions', [])
         if any(item['id'] == request_id for item in completed):
             return p
@@ -341,6 +353,8 @@ def move_chat(payload):
             raise ValueError('The chat or destination project was not found. Refresh and try again.')
         if source['id'] == target_id:
             raise ValueError('Choose a different destination project.')
+        from work_control import busy
+        if busy(source) or busy(target):raise ValueError('Wait for project work to finish before moving a chat.')
         native = payload.get('native', False)
         if not isinstance(native, bool):
             raise ValueError('Invalid Codex move option.')
@@ -402,7 +416,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(dict(draft=p.get('actionDraft'),revision=p.get('draftRevision',0)))
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
                  '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript'),
-                 '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript')}
+                 '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript'),
+                 '/control.js':('control.js','text/javascript'),'/control.css':('control.css','text/css')}
         if route not in files:
             return self.json_response({'error':'Not found'}, 404)
         name, mime = files[route]
@@ -438,6 +453,10 @@ class Handler(BaseHTTPRequestHandler):
                 service=codex_service();result=service.start_job(lambda:service.recommendation(body))
             elif self.path == '/api/codex/send':
                 result=codex_service().send(body)
+            elif self.path == '/api/project/control':
+                result=codex_service().control.control(body)
+            elif self.path == '/api/project/queue':
+                result=codex_service().control.queue(body)
             elif self.path == '/api/drafts':
                 result=save_draft(body)
             elif self.path == '/api/codex/replies':
@@ -450,7 +469,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self.json_response({'error':'Not found'},404)
             self.json_response(result)
-        except (ValueError, OSError, subprocess.TimeoutExpired, sqlite3.Error) as exc:
+        except (ValueError, OSError, ProjectOperationError, subprocess.TimeoutExpired, sqlite3.Error) as exc:
             self.json_response({'error': str(exc)},400)
 
 if __name__ == '__main__':
@@ -463,5 +482,6 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     service=codex_service();service.start_job(service.audit)
     threading.Thread(target=service.watch_receipts,daemon=True).start()
+    threading.Thread(target=service.control.watch,daemon=True).start()
     print(f'Project tracker: http://127.0.0.1:{args.port}', flush=True)
     server.serve_forever()

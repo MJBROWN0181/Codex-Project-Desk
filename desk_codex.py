@@ -52,6 +52,8 @@ class DeskCodex:
                     receipt.update(status='unknown',note='Project Desk restarted before confirmation. Checking chat history; this request will not be sent again automatically.')
                     changed=True
             if changed:store.metadata('codexMessages',receipts)
+        from work_control import WorkControl
+        self.control=WorkControl(self)
 
     def project(self,identity):
         project=next((p for p in self.store.load_projects() if p['id']==identity),None)
@@ -180,6 +182,8 @@ class DeskCodex:
 
     def recommendation(self,body):
         p=self.project(body.get('projectId'));identity=thread_id(body.get('threadId'))
+        from work_control import busy
+        if busy(p):raise ValueError('Codex is still working. Add content to the queue instead.')
         with Client() as client:
             t=client.read_thread(identity)
             if t['id']!=identity:raise ValueError('Chat identity did not match.')
@@ -251,7 +255,7 @@ class DeskCodex:
                         except Exception:continue
             except Exception:continue
 
-    def send(self,body):
+    def send(self,body,internal=False,kind='normal'):
         p=self.project(body.get('projectId'));identity=thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
         message=message_text(body)
         with self.store.MUTATION_LOCK:
@@ -261,11 +265,28 @@ class DeskCodex:
                 if (existing['threadId'],existing['projectId'],existing['message'])!=(identity,p['id'],message):
                     raise ValueError('This send request was already used for a different message.')
                 return existing
+            p=self.project(p['id'])
+            from work_control import busy
+            if busy(p):raise ValueError('This project already has work in progress. Add content to its queue instead.')
+            if not internal and (p.get('workPaused') or any(i['state'] in ('pending','dispatching') for i in p.get('contentQueue',[]))):
+                raise ValueError('Resume and finish queued additions before sending a new next action.')
+            if any(other['id']!=p['id'] and busy(other) and other.get('workState',{}).get('threadId')==identity for other in self.store.load_projects()):
+                raise ValueError('Another project has work in progress in this chat. Wait for it to finish.')
             if any(r['threadId']==identity and r['status'] in ('working','queued') for r in receipts.values()):
                 raise ValueError('A message is already waiting for confirmation in this chat. Check its delivery receipt before sending another.')
             receipt=dict(id=request,threadId=identity,projectId=p['id'],message=message,action=body['action'].strip(),reason=body.get('reason','').strip(),
-                status='working',createdAt=self.store.now())
-            receipts[request]=receipt;self.store.metadata('codexMessages',receipts)
+                status='working',createdAt=self.store.now(),managed=True)
+            receipts[request]=receipt
+            p['workState']=dict(phase='sending',threadId=identity,requestId=request,kind=kind,startedAt=self.store.now(),detail='Sending reviewed work to Codex.')
+            p['suggestion']=None;p['needsRecommendation']=False
+            if kind=='wrap':p['wrapRequested']=False
+            for item in p.get('contentQueue',[]):
+                if item['id']==request:item.update(state='sent',sentAt=self.store.now())
+            # Receipt and project reservation are one transaction. An ambiguous
+            # restart is reconciled by reading history, never by retransmitting.
+            with self.store.connect() as db:
+                db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)',('codexMessages',json.dumps(receipts)))
+                db.execute('INSERT OR REPLACE INTO projects VALUES (?,?)',(p['id'],json.dumps(p)))
         threading.Thread(target=self._send_worker,args=(receipt,),daemon=True).start()
         return receipt
 
@@ -276,6 +297,8 @@ class DeskCodex:
                 t=client.read_thread(identity)
                 if t['id']!=identity:raise ValueError('Chat identity did not match.')
                 before=client.call('thread/turns/list',dict(threadId=identity,limit=5,itemsView='notLoaded'))
+                if any(turn.get('status')=='inProgress' for turn in before.get('data',[])):
+                    raise ValueError('This chat is already working. Wait for its current turn, then queue your addition.')
                 receipt['beforeTurns']=[turn['id'] for turn in before.get('data',[])]
                 self._receipt(request,beforeTurns=receipt['beforeTurns'])
             self._receipt(request,title=t.get('name') or 'Codex chat')
