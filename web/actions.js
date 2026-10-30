@@ -1,7 +1,8 @@
-let actionReview=null, actionGeneration=0, actionSendId=null;
+let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function waitCodexJob(id,onUpdate=null){
+async function waitCodexJob(id,onUpdate=null,shouldContinue=()=>true){
   for(let i=0;i<240;i++){
+    if(!shouldContinue())throw new Error('Recommendation canceled.');
     const job=await request('/api/codex/jobs/'+encodeURIComponent(id));
     if(onUpdate)onUpdate(job);
     if(job.status==='complete')return job.result;
@@ -19,12 +20,16 @@ function updateActionPreview(){
 }
 async function generateAction(){
   const form=$('#action-form'),id=form.elements.threadId.value,sequence=++actionGeneration;
-  if(!id){$('#action-status').textContent='Choose an existing Codex chat to continue.';return;}
+  if(!id){
+    form.elements.action.readOnly=false;form.elements.reason.readOnly=false;
+    $('#send-action').disabled=true;$('#recommend-action').disabled=true;
+    $('#action-status').textContent='Choose an existing Codex chat to continue.';return;
+  }
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;$('#send-action').disabled=true;
   $('#recommend-action').disabled=true;$('#action-status').textContent='Codex agent is reviewing recent messages and choosing a next step…';
   try{
     const job=await request('/api/codex/recommend',{projectId:actionReview.id,threadId:id});
-    const answer=await waitCodexJob(job.id);
+    const answer=await waitCodexJob(job.id,null,()=>sequence===actionGeneration && $('#action-review').open);
     if(sequence!==actionGeneration || !$('#action-review').open)return;
     form.elements.action.value=answer.action;form.elements.reason.value=answer.reason;
     updateActionPreview();$('#action-status').textContent='Agent recommendation ready. Review or edit it, add instructions, then send.';
@@ -61,6 +66,24 @@ function showReceipt(receipt){
   $('#delivery-note').textContent=receipt.error || receipt.note || (receipt.status==='received'?'Your reviewed message appears in the destination chat. Work completion is tracked separately.':'Your message is queued for the selected chat. Waiting for confirmation in chat history.');
   $('#delivery-message').textContent=receipt.message;
 }
+async function openDelivery(receipt){
+  const watch=++deliveryWatch;showReceipt(receipt);
+  if(!$('#delivery').open)$('#delivery').showModal();
+  try{
+    for(let i=0;i<80;i++){
+      if(watch!==deliveryWatch || !$('#delivery').open)break;
+      const latest=await request('/api/codex/jobs/'+encodeURIComponent(receipt.id));
+      if(watch!==deliveryWatch || !$('#delivery').open)break;
+      showReceipt(latest);
+      if(['received','failed','unknown'].includes(latest.status))break;
+      await pause(1000);
+    }
+  }catch(error){if(watch===deliveryWatch && $('#delivery').open)$('#delivery-note').textContent=error.message;}
+  finally{if(watch===deliveryWatch)await load().catch(error=>notice(error.message));}
+}
+$('#delivery').addEventListener('close',()=>{
+  ++deliveryWatch;load().catch(()=>{});
+});
 $('#action-form').addEventListener('input',updateActionPreview);
 $('#action-form').elements.threadId.onchange=()=>{actionSendId=crypto.randomUUID();generateAction();};
 $('#recommend-action').onclick=generateAction;
@@ -70,13 +93,7 @@ $('#action-form').onsubmit=async event=>{
   try{
     const receipt=await request('/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,threadId:form.elements.threadId.value,
       action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value});
-    $('#action-review').close();showReceipt(receipt);$('#delivery').showModal();
-    for(let i=0;i<80;i++){
-      const latest=await request('/api/codex/jobs/'+encodeURIComponent(receipt.id));showReceipt(latest);
-      if(['received','failed','unknown'].includes(latest.status) || latest.note)break;
-      await pause(1000);
-    }
-    await load();
+    $('#action-review').close();await openDelivery(receipt);
   }catch(error){notice(error.message);}finally{button.disabled=false;}
 };
 document.addEventListener('click',async event=>{

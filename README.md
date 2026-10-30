@@ -1,6 +1,8 @@
 # Codex Project Desk
 
-Project Desk version 1.1.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, agent recommendations, reviewed message delivery, and a persistent dark/light theme.
+Project Desk version 1.1.1 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, agent recommendations, reviewed message delivery, and a persistent dark/light theme.
+
+Refresh beside the title updates saved project data without resetting the current search, filters, sort, or theme. Returning focus to the window also refreshes the list when no dialog is open, keeping in-progress form edits intact. Codex index import and connection checks retain their separate controls.
 
 ## Run locally
 
@@ -13,6 +15,8 @@ Personal state in `data/` is excluded from Git: project records, chat exports, s
 Run `python -m unittest -v test_tracker.py` for isolated data tests. For browser checks and icon generation, install `requirements-dev.txt` and Chromium with `python -m playwright install chromium`, then run `python check_browser.py` or `python create_icon.py` as needed.
 
 Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to this installation's existing integration-test chat; it must not be run against an unrelated account or without permission to message that chat.
+
+`python check_smoothness.py` covers header refresh, retained filters/theme, out-of-order responses, changing a chat target during recommendation generation, receipt-dialog races, and responsive layouts. It uses temporary data and does not send messages.
 
 ## Next-action recommendations and Codex delivery
 

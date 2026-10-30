@@ -5,14 +5,17 @@ const dateText = value => value ? new Intl.DateTimeFormat(undefined,{dateStyle:'
 function deliveryLabel(receipt){
   return ({working:'Sending to Codex…',queued:'Queued in Codex',received:'Received by Codex',failed:'Send failed',unknown:'Delivery needs checking'})[receipt.status] || receipt.status;
 }
-let noticeTimer;
+let noticeTimer,projectLoadSequence=0;
 function notice(text) { $('#notice').textContent = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(()=>$('#notice').textContent='',6500); }
 async function request(url, body) {
   const response = await fetch(url, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not save changes.'); return data;
 }
 async function load() {
-  const data = await request('/api/projects'); projects = data.projects; chatAssignments = data.chatAssignments || {};
+  const sequence=++projectLoadSequence;
+  const data = await request('/api/projects');
+  if(sequence!==projectLoadSequence)return;
+  projects = data.projects; chatAssignments = data.chatAssignments || {};
   codexMessages=data.codexMessages || {};
   const sources = data.codex?.sources?.map(s=>`${s.name}: ${dateText(s.at)}`).join(' · ');
   $('#source').textContent = `Codex uses saved activity metadata. ${sources || 'No Codex index imported yet.'} Refresh reads the latest available saved index; it does not fetch live conversations.`;
@@ -95,7 +98,7 @@ $('#projects').onclick=async event=>{
   if(action==='review')return openActionReview(p);
   if(action==='receipt'){
     const receipt=Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
-    if(receipt){showReceipt(receipt);$('#delivery').showModal();}return;
+    if(receipt)openDelivery(receipt);return;
   }
   if(action==='move') return openMover(p);
   if(action==='pending') return showMoveResult(chatAssignments[p.chats.find(c=>chatAssignments[c.id]?.nativeStatus==='pending').id]);
@@ -137,3 +140,12 @@ $('#refresh').onclick=async()=>{
   catch(error) { notice(error.message); } finally { button.disabled=false; button.textContent='Refresh Codex index'; }
 };
 load().catch(error=>notice(error.message));
+$('#refresh-desk').onclick=async()=>{
+  const button=$('#refresh-desk');button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Refreshing…';
+  try{await load();notice('Project list refreshed.');}
+  catch(error){notice(error.message);}
+  finally{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='↻ Refresh';}
+};
+window.addEventListener('focus',()=>{
+  if(!document.querySelector('dialog[open]'))load().catch(()=>{});
+});

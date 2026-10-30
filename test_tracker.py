@@ -210,5 +210,19 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(saved['chats'][0]['connectionStatus'],'verified')
         self.assertEqual(saved['chats'][0]['title'],'Correct title')
 
+    def test_action_reason_tracks_edits_acceptance_and_completion(self):
+        p=server.update({'name':'Reason test','nextAction':'First step'})
+        p['nextActionReason']='Reason for first step';server.save(p)
+        saved=server.update({'id':p['id'],'blocker':'Waiting on files'})
+        self.assertEqual(saved['nextActionReason'],'Reason for first step')
+        saved=server.update({'id':p['id'],'nextAction':'Changed step'})
+        self.assertNotIn('nextActionReason',saved)
+        saved['suggestion']={'text':'Suggested step','reason':'Because it follows the milestone'};server.save(saved)
+        saved=server.update({'id':p['id'],'action':'accept'})
+        self.assertEqual(saved['nextActionReason'],'Because it follows the milestone')
+        saved=server.update({'id':p['id'],'action':'complete-action','requestId':str(uuid.uuid4()),
+            'expectedAction':'Suggested step','nextAction':'Replacement'})
+        self.assertNotIn('nextActionReason',saved)
+
 if __name__=='__main__':
     unittest.main()

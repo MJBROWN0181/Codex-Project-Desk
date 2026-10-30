@@ -238,11 +238,13 @@ def update(payload):
     p = next((p for p in load_projects() if p['id'] == identity), None) if identity else new_project('New project')
     if not p:
         raise ValueError('Project was not found.')
+    previous_action=p.get('nextAction','')
     for key in ('name','kind','status','nextAction','blocker','repo','agency'):
         if key in payload:
             if not isinstance(payload[key], str) or len(payload[key]) > 3000:
                 raise ValueError('Project fields must be text of up to 3,000 characters.')
             p[key] = payload[key].strip()
+    if p['nextAction']!=previous_action:p.pop('nextActionReason',None)
     if not p['name'] or p['status'] not in STATUSES or p['kind'] not in KINDS:
         raise ValueError('Choose a project name, valid type, and status.')
     if p['kind'] == 'Documents Render' and not p.get('agency'):
@@ -252,6 +254,7 @@ def update(payload):
     action = payload.get('action')
     if action == 'accept' and p['suggestion']:
         p['nextAction'] = p['suggestion']['text']
+        p['nextActionReason']=p['suggestion'].get('reason','')
         p['suggestion'] = None
     elif action == 'dismiss':
         p['suggestion'] = None
@@ -294,6 +297,7 @@ def complete_action(payload):
         event(p, stamp, 'Completed: ' + current + ('\n' + note.strip() if note.strip() else ''),
               'Completed action', 'completed:' + request_id)
         p['nextAction'] = replacement.strip()
+        p.pop('nextActionReason',None)
         if p.get('suggestion') and p['suggestion'].get('text', '').strip() == current:
             p['suggestion'] = None
         # Refreshing a metadata snapshot must not fabricate a replacement action.
