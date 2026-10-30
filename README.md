@@ -1,6 +1,70 @@
 # Codex Project Desk
 
-Project Desk version 2.1.1 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
+Project Desk version 2.1.1 helps you track software, website, app, business, and document-rendering projects in one local dashboard. See the next action and last-worked time for each project, review recommendations, and follow work sent to Codex. It also provides saved drafts, project archives, readiness audits, and dark/light themes.
+
+This is a local desktop tool, not a hosted or cloud-sync service. Manual tracking needs only Python. Automated work requires compatible local Codex tooling; audit grades describe the checks performed and do not guarantee production readiness.
+
+## Run locally
+
+Download or clone this repository into a folder of your choice. It contains the
+Project Desk application and synthetic test fixtures, with no saved projects,
+chat exports, account credentials, or browser profiles.
+
+1. Install Python 3.10 or newer.
+2. Open a terminal in the downloaded folder and run `python server.py`.
+3. Open [Project Desk](http://127.0.0.1:8789). The first-run wizard checks optional tools and
+   explains how to add your first project. Choose **Start with an empty desk**
+   or **Add my first project**. No sample projects or local indexes are imported.
+4. On Windows, `Open-ProjectDesk.ps1` opens a standalone window. Optionally run
+   `Install-DesktopShortcuts.ps1` to create the desktop icon and a combined Codex
+   launcher. The combined launcher replaces an existing `Codex (OpenAI).lnk`
+   shortcut only if one is present. Shortcut changes happen only when you run
+   that installer.
+
+The wizard is available again through **Getting started** in the header. Python
+is the only requirement for manual tracking. Codex features additionally need
+an installed, signed-in Codex CLI; GitHub features need Git and a signed-in
+GitHub CLI (`gh`). The wizard checks tool availability, not account sign-in.
+
+Add projects manually with **Add project**. **Refresh Codex index** explicitly
+imports this computer's saved metadata, if available; ordinary startup never
+imports it. Personal runtime state stays in the Git-ignored `data/` folder.
+Do not upload that folder when sharing the app. `PROJECT_TRACKER_DATA` can point
+to another local data directory; exports are read from that directory too.
+
+From the repository folder, the basic launch command is:
+
+```powershell
+python server.py
+```
+
+For the separate Windows app window, use:
+
+```powershell
+.\Open-ProjectDesk.ps1
+```
+
+The standalone window needs Microsoft Edge or Google Chrome. Codex automation,
+chat opening, and desktop shortcuts currently target Windows; manual tracking
+can also be used through the local browser page. Codex integration depends on
+the installed CLI exposing the app-server and queue commands used by this app.
+Signing into a CLI alone does not verify that every integration is supported.
+
+## First project workflow
+
+1. Click **Add project**, enter its name and type, and save. Add an existing local
+   project folder for audits and an `owner/repository` value for GitHub features.
+2. For a linked local Codex chat, click the next action, search for the destination
+   chat, and review or edit the recommended step, reason, and instructions.
+3. Click **Send to Codex**. The card tracks the delivered work until the exact
+   Codex turn finishes. Add content while it works to queue follow-up instructions.
+4. Use **Mark done manually** for work you finish yourself. Codex work updates
+   automatically when its tracked turn completes.
+
+A new empty desk has no linked chat. Link one by choosing an existing local chat
+in the next-action review, explicitly importing a saved Codex index, or using the
+optional installed `spd` skill described below. Audits differ from next-action
+sends: after review, they create a new chat named **Audit** in the project folder.
 
 ## Work, queue, and finishing controls
 
@@ -12,8 +76,8 @@ click creates a new local chat named Audit in the project's existing folder and
 delivers the reviewed fixes there, never to an older chat. Cancelling creates no
 chat. The project must have an existing local folder. Normal next-action reviews
 use a searchable chat picker with readable, wrapping rows in dark and light mode.
-Audit review never generates a replacement recommendation. Audit edits save in a separate browser draft, keeping
-the existing next-action draft intact. Advisor fix prompts have the same workflow;
+Audit review never generates a replacement recommendation. Audit edits save in
+a separate browser draft, keeping the existing next-action draft intact. Advisor fix prompts have the same workflow;
 unanimous shelving reports expose no fix-prompt copy or send controls.
 
 Repair prompts reference the full saved report, ask Codex to select relevant
@@ -41,7 +105,7 @@ copyable prompts when appropriate, and never applies fixes or archives the
 project automatically. It is a bounded evidence-based assessment, not proof of
 future adoption or revenue. Report files are saved in the local data/reports folder.
 
-Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. Version 2.1.0 repairs old stuck Unreviewed labels once using saved review/work evidence; untouched imports stay Unreviewed.
+Unreviewed means an imported project has not yet been reviewed in Project Desk. Accepting or dismissing its suggestion, saving project details or an edited review draft, generating a successful agent recommendation, sending/queuing work, or starting a project audit clears it to Active. Mark reviewed also clears it directly without changing Last worked on. Imports, connection checks, and pinning alone do not count as reviews. Explicit Waiting, Paused, and Complete statuses are preserved. A one-time migration repairs old stuck Unreviewed labels using saved review/work evidence; untouched imports stay Unreviewed.
 
 Sending a reviewed next action immediately reserves the project as working. A delivery receipt means the message arrived; completion waits for the exact Codex turn to report completed. While working, project edits and new suggestions are held. Add content saves durable FIFO additions, automatically delivered to the same local chat after completion. The saved final answer updates the card and activity. When the queue is empty, an agent recommends a new step for review; suggestions are never executed automatically. A finished turn does not mean the whole project is complete.
 
@@ -83,41 +147,42 @@ Latest Codex reply shows saved final assistant text from the preferred linked lo
 
 Refresh beside the title updates saved project data without resetting the current search, filters, sort, or theme. Returning focus to the window also refreshes the list when no dialog is open, keeping in-progress form edits intact. Codex index import and connection checks retain their separate controls.
 
-## Run locally
+## Development checks
 
-Download or clone this repository into a folder of your choice. It contains the
-Project Desk application and synthetic test fixtures, with no saved projects,
-chat exports, account credentials, or browser profiles.
+The runtime uses Python's standard library. Install the optional development
+packages and browser for UI checks or icon generation:
 
-1. Install Python 3.10 or newer.
-2. Open a terminal in the downloaded folder and run `python server.py`.
-3. Open http://127.0.0.1:8789. The first-run wizard checks optional tools and
-   explains how to add your first project. Choose **Start with an empty desk**
-   or **Add my first project**. No sample projects or local indexes are imported.
-4. On Windows, `Open-ProjectDesk.ps1` opens a standalone window. Optionally run
-   `Install-DesktopShortcuts.ps1` to create the desktop icon and a combined Codex
-   launcher. Shortcut changes happen only when you run that installer.
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
+```
 
-The wizard is available again through **Getting started** in the header. Python
-is the only requirement for manual tracking. Codex features additionally need
-an installed, signed-in Codex CLI; GitHub features need Git and a signed-in
-GitHub CLI (`gh`). The wizard checks tool availability, not account sign-in.
+Run the full isolated unit test suite from the repository folder:
 
-Add projects manually with **Add project**. **Refresh Codex index** explicitly
-imports this computer's saved metadata, if available; ordinary startup never
-imports it. Personal runtime state stays in the Git-ignored `data/` folder.
-Do not upload that folder when sharing the app. `PROJECT_TRACKER_DATA` can point
-to another local data directory; exports are read from that directory too.
+```powershell
+python -m unittest discover -q
+```
 
-## Checks
+Focused browser checks start their own temporary servers and databases:
 
-Run `python -m unittest discover -q` for the full isolated test suite. Run `python check_setup.py` for the first-run wizard, empty desk, and add-project browser checks. For browser checks and icon generation, install `requirements-dev.txt` and Chromium with `python -m playwright install chromium`, then run `python check_browser.py` or `python create_icon.py` as needed.
+```powershell
+python check_setup.py
+python check_browser.py
+python check_actions.py
+python check_audit_send.py
+python check_workflow_features.py
+python check_smoothness.py
+```
 
-Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to a test chat explicitly supplied through `PROJECT_DESK_TEST_CHAT`; it must not be run against an unrelated account or without permission to message that chat.
+These cover first-run setup, project editing, reviewed sends, the searchable
+chat picker, audit highlights and new-chat routing, saved drafts, pins, refresh
+behavior, and responsive layouts. Normal chat-send checks use mocked transport
+and do not send messages to live chats. Recreate icon assets with
+`python create_icon.py` only when needed; it writes the generated icon files.
 
-`python check_smoothness.py` covers header refresh, retained filters/theme, out-of-order responses, changing a chat target during recommendation generation, receipt-dialog races, and responsive layouts. It uses temporary data and does not send messages.
-
-Run `python -m unittest -v test_tracker.py test_codex_actions.py test_workflow_features.py` for the complete suite. `python check_workflow_features.py` verifies draft and pin persistence through an HTTP-server restart, draft discard, restored chat selection, escaped reply text, and the focus view, with no Codex messages sent.
+`python check_actions.py --live` is a separate optional test that sends an echo
+request to the test chat supplied through `PROJECT_DESK_TEST_CHAT`. Run it only
+with permission to message that exact chat. It is not part of the default checks.
 
 ## Next-action recommendations and Codex delivery
 
@@ -131,11 +196,14 @@ Every server startup audits linked local chats with the app-server protocol and 
 
 ## Desktop setup and local integrations
 
-Desktop access: `Project desk.lnk` starts the local service if needed, waits until it responds, and opens Project desk in a standalone Edge app window (Chrome fallback). It uses a dedicated profile in `data/window-profile`, leaving the normal browser profile alone. Reopening the shortcut focuses the existing Project desk window when available.
+Desktop access: `Project desk.lnk` starts the local service if needed, waits until it responds, and opens Project desk in a standalone Edge app window (Chrome fallback). It uses a dedicated profile in `data/window-profile` by default; an existing installation can retain its configured browser profile through `data/location.json`. The normal browser profile is left alone. Reopening the shortcut focuses the existing Project desk window when available.
 
 The `Codex (OpenAI).lnk` desktop shortcut runs `Open-CodexWithProjectDesk.ps1`: it opens the separate Project desk window and activates the installed Codex Windows app normally. It does not navigate Codex to a particular chat. The two windows can be moved, resized, and used side by side. This applies to these desktop shortcuts; it is not a system-wide Codex launch hook. No chats are created and no messages are sent.
 
-The original Codex desktop shortcut is preserved in `data/shortcut-backups/Codex (OpenAI).lnk`. Copy it back to the desktop to restore the original launcher. No Windows sign-in startup entry, taskbar shortcut, or scheduled monitor was installed.
+When the shortcut installer replaces an existing Codex shortcut, it first backs
+it up to `data/shortcut-backups/Codex (OpenAI).lnk` unless that backup already
+exists. Copy that backup to the desktop to restore the original launcher. The
+installer does not create a Windows sign-in startup entry or scheduled monitor.
 
 Custom icon sources are in `assets/project-desk.svg`, `assets/project-desk.png`, and `assets/project-desk.ico`; recreate them with `python create_icon.py`. The desktop icon contains the common Windows sizes from 16 to 256 pixels.
 
@@ -149,10 +217,13 @@ GitHub refresh uses the existing `gh` CLI account and reads the configured repos
 
 Activity imports normalize timestamps to UTC and retain the newest observation of a chat or commit without adding duplicate entries. Older snapshots cannot replace newer chat details. GitHub network reads happen before merging into the latest saved project, so manual notes or completed actions saved during a refresh are preserved. Local mutations are serialized within the running server. Activity timestamps represent the original work or conversation time; the time a refresh was checked is reported separately.
 
-No model API key, payment, public deployment, scheduled task, or startup registration is needed. Launch the local server again after restarting the computer.
+Manual tracking needs no model API key, public deployment, scheduled task, or
+startup registration. Codex features use the installed CLI and its existing
+account; account access and usage limits still apply. Launch the local server
+again after restarting the computer, or use the installed desktop shortcut.
 
-Next action done appears when a project has an accepted or manually entered next action. It opens a form with an optional completion note and optional replacement action. Mark done saves a permanent completed-action entry, records activity, and updates Last worked on; it does not change project status or blockers. Leaving the replacement empty clears the current action so a new one can be chosen later. Completed actions remain available in each card's history. Cancellation changes nothing; duplicate submissions are idempotent and stale forms cannot complete a changed action.
+**Mark done manually** appears when a project has an accepted or manually entered next action. It opens a form with an optional completion note and optional replacement action. Mark done manually saves a permanent completed-action entry, records activity, and updates Last worked on; it does not change project status or blockers. Leaving the replacement empty clears the current action so a new one can be chosen later. Completed actions remain available in each card's history. Cancellation changes nothing; duplicate submissions are idempotent and stale forms cannot complete a changed action.
 
 Project types include Website, App, and Documents Render. Documents Render requires an agency name; the agency field suggests previously saved names and accepts a new name. Agency names also appear on cards and are searchable.
 
-Move chat is available on cards and beside linked chats inside Edit project. It moves the tracker link and its chat activity together and preserves that assignment across saved-index refreshes. It does not move files or change project actions. For destinations backed by a native Codex project, the form can prepare an actual Codex move. The resulting dialog provides an instruction to paste into Codex; the request remains pending until the native `move_thread_to_project` tool succeeds. Destinations created only in the tracker support tracker-only moves. See AGENTS.md and `python manage_moves.py list` for handling native move requests.
+Move chat is available on cards and beside linked chats inside Edit project. It moves the tracker link and its chat activity together and preserves that assignment across saved-index refreshes. It does not move files or change project actions. For destinations backed by a native Codex project, the form can prepare an actual Codex move. The resulting dialog provides an instruction to paste into Codex; the request remains pending until the native `move_thread_to_project` tool succeeds. Destinations created only in the tracker support tracker-only moves. See [AGENTS.md](AGENTS.md) and `python manage_moves.py list` for handling native move requests.
