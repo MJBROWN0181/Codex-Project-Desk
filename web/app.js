@@ -14,7 +14,11 @@ function readArchivePending(){
   try{const saved=JSON.parse(localStorage.getItem(archiveKey) || '{}');return Object.fromEntries(Object.entries(saved).filter(([id,v])=>id && typeof v?.archived==='boolean' && Number.isFinite(v.at)));}catch{return {};}
 }
 archivePending=readArchivePending();
-function isArchived(p){return archivePending[p.id]?.archived ?? !!p.archived;}
+function isArchived(p){
+  const pending=archivePending[p.id];
+  if(pending && p.archiveUpdatedAt && Date.parse(p.archiveUpdatedAt)>=pending.at)return !!p.archived;
+  return pending?.archived ?? !!p.archived;
+}
 function storeArchivePending(value){localStorage.setItem(archiveKey,JSON.stringify(value));archivePending=value;}
 async function syncArchivePending(data){
   if(!data.features?.projectArchive)return;

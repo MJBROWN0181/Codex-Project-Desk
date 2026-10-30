@@ -174,18 +174,20 @@ def sync_codex():
     overrides = metadata('chatAssignments') or {}
     aliases = metadata('chatAliases') or {}
     path_overrides = metadata('projectPathOverrides') or {}
+    native_cards = metadata('nativeProjectCards') or {}
     # Older snapshot first; the most recent export wins for project metadata.
     for stamp, label, d in sources:
         for row in d.get('projects', []):
             if row.get('projectKind') != 'local' or row.get('label', '').lower() in ignored:
                 continue
-            identity = row['projectId']
+            native_identity = row['projectId']
+            identity = native_cards.get(native_identity,native_identity)
             if identity not in projects:
                 projects[identity] = new_project(row['label'], identity=identity)
                 projects[identity]['status'] = 'Unreviewed'
             p = projects[identity]
-            p['codexProjectId'] = identity
-            p['path'] = path_overrides.get(identity) or row.get('path', '')
+            p['codexProjectId'] = p.get('codexProjectId') or native_identity
+            p['path'] = path_overrides.get(native_identity) or row.get('path', '')
             if not p['repo']:
                 p['repo'] = infer_repo(p['path'])
             imported.add(identity)
@@ -193,7 +195,8 @@ def sync_codex():
         for chat in chats:
             alias=aliases.get(chat.get('id'))
             if alias:chat={**chat,'id':alias['id'],'projectId':alias['projectId'],'title':alias['title']}
-            assigned = overrides.get(chat.get('id'), {}).get('targetProjectId', chat.get('projectId'))
+            native_project=chat.get('projectId')
+            assigned = overrides.get(chat.get('id'), {}).get('targetProjectId', native_cards.get(native_project,native_project))
             p = projects.get(assigned)
             if not p or chat.get('kind') != 'codex':
                 continue
@@ -450,7 +453,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response({'error':'Invalid host'}, 403)
         route = urlparse(self.path).path
         if route == '/api/projects':
-            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), features=dict(projectArchive=True), codex=metadata('codex'),
+            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), features=dict(projectArchive=True,projectRegister=True), codex=metadata('codex'),
                                            chatAssignments=metadata('chatAssignments') or {},
                                            codexConnections=metadata('codexConnections'),codexMessages=metadata('codexMessages') or {}))
         if route.startswith('/api/codex/jobs/'):
@@ -490,6 +493,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Expected an object.')
             if self.path == '/api/projects':
                 result = update(body)
+            elif self.path == '/api/project/register':
+                from desk_register import register
+                result=register(sys.modules[__name__],body)
             elif self.path == '/api/codex':
                 result = sync_codex()
             elif self.path == '/api/move-chat':

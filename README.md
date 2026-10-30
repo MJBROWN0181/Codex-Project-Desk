@@ -20,6 +20,16 @@ Website projects can have a configured HTTP(S) URL. If it is empty, Check site d
 
 ## Drafts, focus, and latest replies
 
+Michael's installed `spd` (Send to Project Desk) skill registers the current
+project and verified local Codex chat automatically. Type `spd` or `$spd` in that
+chat, then refresh Project Desk. It reuses matching cards, fills missing known
+details, restores an archived card, and preserves saved work and drafts. It does
+not send instructions to Codex, move the native chat, or execute project work.
+The maintained helper is `desk_register.py --input-file <registration.json>`;
+the installed skill supplies contextual details and verifies success through the
+live desk API. Registration remains available while an older server finishes
+long-running reviews, using an atomic merge into the same local database.
+
 Archive project beside Pin hides a project from the main desk without deleting
 its files, chats, saved drafts, history, or project record. It does not archive
 the native Codex project or stop running work. Open Archived above the cards and
