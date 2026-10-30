@@ -57,3 +57,9 @@ select option:checked{background-color:#245bc4;color:#fff}
 [data-theme="dark"] select option,[data-theme="dark"] select optgroup{background-color:#122131;color:#e2eaf3}
 [data-theme="dark"] select option:checked{background-color:#315fb3;color:#fff}
 @media(forced-colors:active){select option,select optgroup,[data-theme="dark"] select option,[data-theme="dark"] select optgroup{background-color:Canvas;color:CanvasText}select option:checked,[data-theme="dark"] select option:checked{background-color:Highlight;color:HighlightText}}
+
+.recommendation-thinking{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:7px;background:color-mix(in srgb,var(--blue) 8%,transparent);color:var(--ink)}
+.recommendation-thinking strong{display:block;font-size:14px}.recommendation-thinking small{display:block;font-size:12px;line-height:1.5;color:var(--muted);margin-top:4px}
+.recommendation-spinner{width:23px;height:23px;flex-shrink:0;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:recommendation-spin .9s linear infinite}
+@keyframes recommendation-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.recommendation-spinner{animation:none}}

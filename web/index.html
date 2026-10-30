@@ -35,7 +35,7 @@
 <dialog id="action-review"><form id="action-form">
 <div class="dialog-heading"><h2>Review next action</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
 <p id="action-project"></p><p id="draft-status" class="hint" role="status">Edits are saved automatically.</p><button id="discard-draft" type="button" class="quiet">Discard draft</button><label>Send to Codex chat<select name="threadId" aria-label="Send to Codex chat" required></select></label>
-<p id="action-status" class="hint" role="status"></p><button type="button" id="recommend-action" class="quiet">Ask agent to recommend again</button>
+<p id="action-status" class="hint" role="status"></p><div id="recommendation-thinking" class="recommendation-thinking" role="status" aria-live="polite" hidden><span class="recommendation-spinner" aria-hidden="true"></span><div><strong>Agent is thinking…</strong><small>Reviewing the project and recent chat to recommend the next step.</small></div></div><button type="button" id="recommend-action" class="quiet" aria-busy="false">Ask agent to recommend again</button>
 <label>Next action<textarea name="action" rows="3" maxlength="3000" required></textarea></label>
 <label>Why this step<textarea name="reason" rows="3" maxlength="3000"></textarea></label>
 <label>Additional instructions (optional)<textarea name="instructions" rows="3" maxlength="6000" placeholder="Add details, changes, or anything else Codex should consider"></textarea></label>

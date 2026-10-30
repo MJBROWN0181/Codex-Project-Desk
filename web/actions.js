@@ -18,14 +18,21 @@ function updateActionPreview(){
   if(form.elements.instructions.value.trim())text+='\n\nAdditional instructions:\n'+form.elements.instructions.value.trim();
   $('#action-preview').textContent=text;
 }
+function setRecommendationBusy(busy){
+  $('#recommendation-thinking').hidden=!busy;
+  $('#recommend-action').setAttribute('aria-busy',String(busy));
+  $('#recommend-action').textContent=busy?'Thinking…':'Ask agent to recommend again';
+}
 async function generateAction(){
   const form=$('#action-form'),id=form.elements.threadId.value,sequence=++actionGeneration;
   if(!id){
+    setRecommendationBusy(false);
     form.elements.action.readOnly=false;form.elements.reason.readOnly=false;
     $('#send-action').disabled=true;$('#recommend-action').disabled=true;
     $('#action-status').textContent='Choose an existing Codex chat to continue.';return;
   }
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;$('#send-action').disabled=true;
+  setRecommendationBusy(true);
   $('#recommend-action').disabled=true;$('#action-status').textContent='Codex agent is reviewing recent messages and choosing a next step…';
   try{
     const job=await request('/api/codex/recommend',{projectId:actionReview.id,threadId:id});
@@ -35,10 +42,11 @@ async function generateAction(){
     markDraftChanged();
     updateActionPreview();$('#action-status').textContent='Agent recommendation ready. Review or edit it, add instructions, then send.';
   }catch(error){if(sequence===actionGeneration)$('#action-status').textContent=error.message;}
-  finally{if(sequence===actionGeneration){$('#recommend-action').disabled=false;form.elements.action.readOnly=false;form.elements.reason.readOnly=false;$('#send-action').disabled=false;}}
+  finally{if(sequence===actionGeneration){setRecommendationBusy(false);$('#recommend-action').disabled=false;form.elements.action.readOnly=false;form.elements.reason.readOnly=false;$('#send-action').disabled=false;}}
 }
 async function openActionReview(project){
   actionReview=project;actionSendId=crypto.randomUUID();const openSequence=++actionGeneration;
+  setRecommendationBusy(false);
   const form=$('#action-form');form.reset();
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;form.elements.instructions.readOnly=true;
   form.elements.action.value=project.nextAction || project.suggestion?.text || '';
@@ -92,12 +100,13 @@ $('#delivery').addEventListener('close',()=>{
 });
 $('#action-form').addEventListener('input',updateActionPreview);
 $('#action-form').elements.threadId.onchange=()=>{
+  setRecommendationBusy(false);
   actionSendId=crypto.randomUUID();const hadDraft=!!activeDraftSession?.draft;markDraftChanged();
   if(hadDraft){++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!f.elements.threadId.value;$('#recommend-action').disabled=!f.elements.threadId.value;$('#action-status').textContent='Destination changed. Your draft is preserved; ask the agent again if you want a new recommendation.';}
   else generateAction();
 };
 $('#recommend-action').onclick=generateAction;
-$('#action-review').addEventListener('close',()=>{++actionGeneration;});
+$('#action-review').addEventListener('close',()=>{++actionGeneration;setRecommendationBusy(false);});
 $('#action-form').onsubmit=async event=>{
   event.preventDefault();const form=event.target,button=$('#send-action');button.disabled=true;++actionGeneration;
   try{

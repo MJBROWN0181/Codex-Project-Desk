@@ -21,7 +21,12 @@ with tempfile.TemporaryDirectory() as directory:
     if not args.live:
         service.refresh_replies=lambda:dict(refreshed=0,unavailable=[])
         service.native_chats=lambda:[dict(id=chat,title='Reply with studio confirmation')]
-        service.recommendation=lambda body:dict(action='Agent recommended step',reason='It follows the previous result.',threadId=chat)
+        recommend_finish=threading.Event();recommend_state={'fail':False}
+        def recommend(body):
+            if not recommend_finish.wait(10):raise ValueError('Test recommendation timed out')
+            if recommend_state['fail']:raise ValueError('Recommendation test failure')
+            return dict(action='Agent recommended step',reason='It follows the previous result.',threadId=chat)
+        service.recommendation=recommend
         def send(body):
             from desk_codex import message_text
             receipt=dict(id=body['requestId'],projectId=p['id'],threadId=chat,status='received',title='Reply with studio confirmation',message=message_text(body),createdAt=server.now())
@@ -36,7 +41,28 @@ with tempfile.TemporaryDirectory() as directory:
             page.goto(f'http://127.0.0.1:{http.server_port}');page.wait_for_load_state('networkidle')
             page.locator('.next-action-link').click();review=page.locator('#action-review')
             expect(review).to_be_visible()
+            if not args.live:
+                expect(page.locator('#recommendation-thinking')).to_be_visible()
+                expect(page.locator('#recommend-action')).to_have_text('Thinking…')
+                expect(page.locator('#recommend-action')).to_have_attribute('aria-busy','true')
+                expect(page.locator('#send-action')).to_be_disabled()
+                page.emulate_media(reduced_motion='reduce')
+                assert page.locator('.recommendation-spinner').evaluate('node=>getComputedStyle(node).animationName')=='none'
+                page.emulate_media(reduced_motion='no-preference')
+                Path('output').mkdir(exist_ok=True);page.screenshot(path='output/recommendation-thinking.png')
+                recommend_finish.set()
             expect(page.locator('#action-status')).to_contain_text('Agent recommendation ready',timeout=210000)
+            expect(page.locator('#recommendation-thinking')).to_be_hidden()
+            expect(page.locator('#recommend-action')).to_have_attribute('aria-busy','false')
+            if not args.live:
+                recommend_finish.clear();recommend_state['fail']=True
+                page.locator('#recommend-action').click()
+                expect(page.locator('#recommendation-thinking')).to_be_visible()
+                recommend_finish.set()
+                expect(page.locator('#action-status')).to_contain_text('Recommendation test failure')
+                expect(page.locator('#recommendation-thinking')).to_be_hidden()
+                expect(page.locator('#recommend-action')).to_be_enabled()
+                expect(page.locator('#send-action')).to_be_enabled()
             Path('output').mkdir(exist_ok=True)
             # Exercise the actual review selector's rows in both themes, including
             # unselected options, without sending any message or changing a target.
