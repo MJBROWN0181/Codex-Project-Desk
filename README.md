@@ -30,6 +30,13 @@ Refresh beside the title updates saved project data without resetting the curren
 
 ## Run locally
 
+Michael's canonical local checkout is `C:\Users\Mjbro\Desktop\Projects\Codex Project Desk`.
+Desktop shortcuts and launchers point to this folder. The local ignored
+`data/location.json` records compatibility paths for existing jobs and the browser
+profile. The data junction keeps one authoritative database while existing work
+finishes. Keep the old compatibility folder until its recorded dependencies have
+been migrated; do not create a second independent live database.
+
 Python 3.10 or newer is required. Run `python server.py`, then open http://127.0.0.1:8789. The application uses Python's standard library and starts with an empty project list when no local Codex export is available. GitHub refresh additionally uses the already-signed-in `gh` CLI.
 
 Personal state in `data/` is excluded from Git: project records, chat exports, shortcut backups, logs, and the standalone browser profile stay on this computer.

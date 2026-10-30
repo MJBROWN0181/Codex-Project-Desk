@@ -81,6 +81,15 @@ def reconcile_review_statuses():
     metadata('reviewStatusMigration1',dict(at=now(),updated=changed))
     return changed
 
+@serialized
+def apply_project_path_overrides():
+    """Restore canonical folders even if an older running import reset a path."""
+    overrides=metadata('projectPathOverrides') or {}
+    for p in load_projects():
+        path=overrides.get(p['id'])
+        if path and p.get('path')!=path:
+            p['path']=path;save(p)
+
 @contextmanager
 def connect():
     db = sqlite3.connect(DB, timeout=20)
@@ -164,6 +173,7 @@ def sync_codex():
     imported = set()
     overrides = metadata('chatAssignments') or {}
     aliases = metadata('chatAliases') or {}
+    path_overrides = metadata('projectPathOverrides') or {}
     # Older snapshot first; the most recent export wins for project metadata.
     for stamp, label, d in sources:
         for row in d.get('projects', []):
@@ -175,7 +185,7 @@ def sync_codex():
                 projects[identity]['status'] = 'Unreviewed'
             p = projects[identity]
             p['codexProjectId'] = identity
-            p['path'] = row.get('path', '')
+            p['path'] = path_overrides.get(identity) or row.get('path', '')
             if not p['repo']:
                 p['repo'] = infer_repo(p['path'])
             imported.add(identity)
@@ -435,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response({'error':'Invalid host'}, 403)
         route = urlparse(self.path).path
         if route == '/api/projects':
-            return self.json_response(dict(projects=load_projects(), codex=metadata('codex'),
+            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), codex=metadata('codex'),
                                            chatAssignments=metadata('chatAssignments') or {},
                                            codexConnections=metadata('codexConnections'),codexMessages=metadata('codexMessages') or {}))
         if route.startswith('/api/codex/jobs/'):
@@ -512,6 +522,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     initialize()
     reconcile_review_statuses()
+    apply_project_path_overrides()
     if not metadata('codex') and (EXPORT.exists() or INDEX.exists()):
         sync_codex()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)

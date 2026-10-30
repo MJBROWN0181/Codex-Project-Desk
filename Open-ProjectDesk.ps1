@@ -11,6 +11,13 @@ try {
     ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     if (-not $projectDeskBrowser) { throw 'Microsoft Edge or Google Chrome is needed for the Project desk window.' }
     $projectDeskProfile = Join-Path $PSScriptRoot 'data\window-profile'
+    $projectDeskLocationFile = Join-Path $PSScriptRoot 'data\location.json'
+    if (Test-Path -LiteralPath $projectDeskLocationFile) {
+        $projectDeskLocation = Get-Content -LiteralPath $projectDeskLocationFile -Raw | ConvertFrom-Json
+        if ($projectDeskLocation.browserProfilePath -and (Test-Path -LiteralPath $projectDeskLocation.browserProfilePath)) {
+            $projectDeskProfile = $projectDeskLocation.browserProfilePath
+        }
+    }
     $projectDeskWindowArgs = @('--app=http://127.0.0.1:8789/', "--user-data-dir=`"$projectDeskProfile`"", '--no-first-run', '--no-default-browser-check', '--window-size=1100,850')
     if (-not $CheckOnly) {
         $projectDeskActivated = $false

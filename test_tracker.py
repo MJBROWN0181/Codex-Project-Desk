@@ -47,6 +47,22 @@ class TrackerTests(unittest.TestCase):
         saved=next(x for x in server.load_projects() if x['id']==p['id'])
         self.assertEqual(saved['name'],'Business plan')
 
+    def test_canonical_project_path_survives_old_exports_and_restart_repair(self):
+        server.sync_codex()
+        canonical=str(Path(self.temp.name)/'Relocated Project')
+        server.metadata('projectPathOverrides',{'fixture':canonical})
+        server.sync_codex()
+        p=next(p for p in server.load_projects() if p['id']=='fixture')
+        self.assertEqual(p['path'],canonical)
+        activity=list(p['activity'])
+        # Simulate an older still-running server importing its stale snapshot.
+        p['path']='old location';server.save(p)
+        server.apply_project_path_overrides()
+        p=next(p for p in server.load_projects() if p['id']=='fixture')
+        self.assertEqual(p['path'],canonical)
+        self.assertEqual(p['activity'],activity)
+        self.assertEqual(len(p['chats']),1)
+
     def test_dismissed_setup_suggestion_stays_dismissed(self):
         server.sync_codex()
         p=next(p for p in server.load_projects() if p['suggestion'])

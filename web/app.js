@@ -1,4 +1,4 @@
-let projects = [], editing = null, logging = null, moving = null, chatAssignments = {}, completing = null, codexMessages = {};
+let projects = [], editing = null, logging = null, moving = null, chatAssignments = {}, completing = null, codexMessages = {}, projectDeskRoot = '';
 const $ = s => document.querySelector(s);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateText = value => value ? new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : 'No activity recorded';
@@ -18,6 +18,7 @@ async function load() {
   const data = await request('/api/projects');
   if(sequence!==projectLoadSequence)return;
   projects = data.projects; chatAssignments = data.chatAssignments || {};
+  projectDeskRoot=data.appRoot || '';
   codexMessages=data.codexMessages || {};
   const sources = data.codex?.sources?.map(s=>`${s.name}: ${dateText(s.at)}`).join(' · ');
   $('#source').textContent = `Project index: ${sources || 'No saved index imported yet.'} Local chat replies and work completion are checked automatically while Project Desk runs.`;
@@ -81,7 +82,7 @@ function updateMoveDestination() {
 function showMoveResult(result) {
   $('#move-result-note').textContent=`The chat link and its activity are now under ${result.targetName} in Project desk.`;
   $('#native-instruction').hidden=result.nativeStatus!=='pending';
-  $('#move-instruction').value=`Move Codex chat ${JSON.stringify(result.title)} (thread ID: ${result.threadId}) to the existing Codex project ${JSON.stringify(result.targetName)} (project ID: ${result.codexProjectId}). Then mark this Project desk move complete in C:/Users/Mjbro/Desktop/Projects/ME/project-tracker using manage_moves.py after the native move succeeds.`;
+  $('#move-instruction').value=`Move Codex chat ${JSON.stringify(result.title)} (thread ID: ${result.threadId}) to the existing Codex project ${JSON.stringify(result.targetName)} (project ID: ${result.codexProjectId}). Then mark this Project desk move complete in ${projectDeskRoot || 'the Project Desk project folder'} using manage_moves.py after the native move succeeds.`;
   $('#move-result').showModal();
 }
 $('#move-form').elements.targetProjectId.onchange=updateMoveDestination;
