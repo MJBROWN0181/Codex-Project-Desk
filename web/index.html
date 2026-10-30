@@ -25,12 +25,12 @@
 <dialog id="move-result"><div class="dialog-heading"><h2>Chat refiled in tracker</h2><button type="button" class="quiet close" aria-label="Close dialog">x</button></div><p id="move-result-note"></p><section id="native-instruction"><label>Paste this instruction into your Codex chat<textarea id="move-instruction" rows="4" readonly></textarea></label><button type="button" id="copy-move">Copy instruction</button><p class="hint">The actual Codex move is still pending. Copying this instruction does not complete it.</p></section></dialog>
 
 <dialog id="completer"><form id="complete-form">
-  <div class="dialog-heading"><h2>Mark next action done</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
+  <div class="dialog-heading"><h2>Mark done manually</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
   <p id="complete-project"></p><div class="completion-current"><strong>Completing</strong><p id="complete-action-text"></p></div>
   <label>Completion note (optional)<textarea name="note" rows="2" maxlength="3000" placeholder="What changed or what did you finish?"></textarea></label>
   <label>Next action (optional)<textarea name="nextAction" rows="3" maxlength="3000" placeholder="Enter the next concrete step, or leave blank to decide later"></textarea></label>
-  <p class="hint">This records the completed action and updates Last worked on. The project's status and blockers stay as you set them.</p>
-  <div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Mark done</button></div>
+  <p class="hint">Use this for work you finished yourself. Work sent to Codex updates automatically when its chat finishes. This records the action and updates Last worked on; the project's status and blockers stay as you set them.</p>
+  <div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit">Mark done manually</button></div>
 </form></dialog>
 <dialog id="action-review"><form id="action-form">
 <div class="dialog-heading"><h2>Review next action</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
