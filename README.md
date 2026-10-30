@@ -4,6 +4,22 @@ Project Desk version 2.1.0 is a local project tracker for software, websites, ap
 
 ## Work, queue, and finishing controls
 
+Audit reports highlight the grade, highest-priority findings, failed checks,
+and verification gaps. Other findings, check results, and full reviewer evidence
+remain expandable. Copy fix prompt and Send to Codex are available beside the
+recommended prompt. Sending first opens an editable review and an explicit local
+chat selector; it never generates a replacement recommendation or sends before
+the final Send to Codex click. Audit edits save in a separate browser draft, keeping
+the existing next-action draft intact. Advisor fix prompts have the same workflow;
+unanimous shelving reports expose no fix-prompt copy or send controls.
+
+Repair prompts reference the full saved report, ask Codex to select relevant
+available tools and installed skills, verify findings, prioritize risk, apply
+focused fixes, rerun checks, and report remaining gaps. Large recommendations are
+read from the complete saved report instead of silently truncating them. Paused or
+working projects retain their existing queue controls. Release and deployment
+actions remain separate from audit remediation.
+
 Panel of advisors runs three independent read-only reviews: a code advisor grades
 implementation and feasibility; a social director grades whether a defined group
 would use and return to the project; a marketing advisor grades positioning,

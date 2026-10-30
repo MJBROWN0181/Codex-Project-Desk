@@ -82,6 +82,20 @@ class CodexActionTests(unittest.TestCase):
         self.assertEqual(saved['actionDraft']['action'],'Newer unsent step')
         self.assertEqual(saved['nextAction'],'Edited action')
 
+    def test_audit_send_preserves_even_an_identical_next_action_draft(self):
+        body=dict(self.payload(),preserveActionDraft=True);message=message_text(body)
+        draft={k:body[k] for k in ('threadId','action','reason','instructions')}
+        server.save_draft(dict(projectId=self.project['id'],expectedRevision=0,draft=draft))
+        with patch('desk_codex.threading.Thread'):receipt=self.service.send(body)
+        result=subprocess.CompletedProcess([],0,'Queued message '+str(uuid.uuid4())+' for thread '+CHAT+'.','')
+        with patch('desk_codex.Client',return_value=self.client(message)),patch('desk_codex.executable',return_value='codex.exe'),\
+             patch('desk_codex.subprocess.run',return_value=result),patch('desk_codex.local_open'):
+            self.service._send_worker(receipt)
+        saved=self.service.project(self.project['id'])
+        self.assertEqual(saved['actionDraft']['action'],draft['action'])
+        self.assertEqual(saved['draftRevision'],1)
+        self.assertEqual(self.service.job(receipt['id'])['status'],'received')
+
     def test_timeout_is_unknown_and_is_not_automatically_retried(self):
         body=self.payload()
         with patch('desk_codex.threading.Thread'):receipt=self.service.send(body)

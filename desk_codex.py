@@ -261,6 +261,7 @@ class DeskCodex:
     def send(self,body,internal=False,kind='normal'):
         p=self.project(body.get('projectId'));identity=thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
         message=message_text(body)
+        if not isinstance(body.get('preserveActionDraft',False),bool):raise ValueError('Invalid draft preservation option.')
         with self.store.MUTATION_LOCK:
             receipts=self.store.metadata('codexMessages') or {}
             if request in receipts:
@@ -278,7 +279,7 @@ class DeskCodex:
             if any(r['threadId']==identity and r['status'] in ('working','queued') for r in receipts.values()):
                 raise ValueError('A message is already waiting for confirmation in this chat. Check its delivery receipt before sending another.')
             receipt=dict(id=request,threadId=identity,projectId=p['id'],message=message,action=body['action'].strip(),reason=body.get('reason','').strip(),
-                status='working',createdAt=self.store.now(),managed=True)
+                status='working',createdAt=self.store.now(),managed=True,preserveActionDraft=body.get('preserveActionDraft',False))
             receipts[request]=receipt
             p['workState']=dict(phase='sending',threadId=identity,requestId=request,kind=kind,startedAt=self.store.now(),detail='Sending reviewed work to Codex.')
             self.store.mark_reviewed(p)
@@ -326,7 +327,7 @@ class DeskCodex:
                 draft=p.get('actionDraft')
                 try:draft_message=message_text(draft) if draft else None
                 except ValueError:draft_message=None
-                if draft and draft.get('threadId')==identity and draft_message==receipt['message']:
+                if draft and not receipt.get('preserveActionDraft') and draft.get('threadId')==identity and draft_message==receipt['message']:
                     p['actionDraft']=None;p['draftRevision']=p.get('draftRevision',0)+1
                 if p.get('suggestion',{} ) and p['suggestion'].get('source')=='Codex agent':p['suggestion']=None
                 self.store.save(p)

@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory() as directory,patch.object(server,'DB',Path(di
             card.get_by_role('button',name='Advisor report',exact=True).click()
             expect(dialog.locator('.advisor-decision')).to_contain_text('Shelve this project')
             expect(dialog).to_contain_text('No fix prompts were generated')
-            expect(dialog.locator('[data-copy-advisor],textarea,.advisor-prompts')).to_have_count(0)
+            expect(dialog.locator('[data-copy-advisor],[data-send-advisor],textarea,.advisor-prompts')).to_have_count(0)
             assert 'DO NOT EXPOSE THIS PROMPT' not in dialog.inner_text()
             self_saved=service.project(p['id']);assert self_saved['auditReport']=={'grade':'B'}
             assert not self_saved.get('archived')

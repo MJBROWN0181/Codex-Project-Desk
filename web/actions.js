@@ -1,4 +1,4 @@
-let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0;
+let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0,actionReviewSeed=null;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function waitCodexJob(id,onUpdate=null,shouldContinue=()=>true){
   for(let i=0;i<240;i++){
@@ -44,18 +44,22 @@ async function generateAction(){
   }catch(error){if(sequence===actionGeneration)$('#action-status').textContent=error.message;}
   finally{if(sequence===actionGeneration){setRecommendationBusy(false);$('#recommend-action').disabled=false;form.elements.action.readOnly=false;form.elements.reason.readOnly=false;$('#send-action').disabled=false;}}
 }
-async function openActionReview(project){
+async function openActionReview(project,seed=null){
   actionReview=project;actionSendId=crypto.randomUUID();const openSequence=++actionGeneration;
+  actionReviewSeed=seed;
+  $('#action-review h2').textContent=seed?'Review audit fixes':'Review next action';
+  $('#recommend-action').hidden=!!seed;
   setRecommendationBusy(false);
   const form=$('#action-form');form.reset();
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;form.elements.instructions.readOnly=true;
-  form.elements.action.value=project.nextAction || project.suggestion?.text || '';
-  form.elements.reason.value=project.nextActionReason || project.suggestion?.reason || '';
+  form.elements.action.value=seed?.action || project.nextAction || project.suggestion?.text || '';
+  form.elements.reason.value=seed?.reason || project.nextActionReason || project.suggestion?.reason || '';
+  form.elements.instructions.value=seed?.instructions || '';
   $('#action-project').textContent=project.name;$('#action-status').textContent='Checking available Codex chats…';
   form.elements.threadId.innerHTML='<option value="">Loading chats…</option>';
   $('#send-action').disabled=true;$('#recommend-action').disabled=true;updateActionPreview();$('#action-review').showModal();
   try{
-    const [result,draft]=await Promise.all([request('/api/codex/threads'),restoreActionDraft(project.id,openSequence)]);
+    const [result,draft]=await Promise.all([request('/api/codex/threads'),restoreActionDraft(project.id,openSequence,seed?.key)]);
     if(openSequence!==actionGeneration || !$('#action-review').open)return;
     const all=new Map(result.chats.map(c=>[c.id,c]));
     const normalized=value=>(value || '').replace(/[\\/]+/g,'/').replace(/\/$/,'').toLowerCase();
@@ -71,7 +75,14 @@ async function openActionReview(project){
       for(const key of ['action','reason','instructions'])form.elements[key].value=draft[key] || '';
       updateActionPreview();$('#send-action').disabled=!preferred;
       $('#action-status').textContent=preferred?'Saved draft restored. Review it before sending.':'The draft is preserved. Choose an available local chat before sending.';
+    }else if(seed){
+      $('#send-action').disabled=!preferred;
+      $('#action-status').textContent=preferred?'Audit fix prompt ready. Review or edit it before sending.':'Choose the existing local Codex chat for these audit fixes.';
+      markDraftChanged();updateActionPreview();
     }else if(preferred)generateAction();else $('#action-status').textContent='Choose the existing Codex chat that should handle this project. A recommendation will be generated for that chat.';
+    if(seed && project.workPaused){
+      $('#send-action').disabled=true;$('#action-status').textContent='This project is paused. Resume its queue on the card before sending these fixes. Your audit edits are saved separately.';
+    }
   }catch(error){if(openSequence===actionGeneration)$('#action-status').textContent=error.message;}
 }
 function showReceipt(receipt){
@@ -102,6 +113,11 @@ $('#action-form').addEventListener('input',updateActionPreview);
 $('#action-form').elements.threadId.onchange=()=>{
   setRecommendationBusy(false);
   actionSendId=crypto.randomUUID();const hadDraft=!!activeDraftSession?.draft;markDraftChanged();
+  if(actionReviewSeed){
+    ++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;
+    $('#send-action').disabled=!f.elements.threadId.value || !!actionReview.workPaused;
+    $('#action-status').textContent=actionReview.workPaused?'This project is paused. Resume its queue on the card before sending these fixes.':'Audit fix prompt preserved. Review the destination and edits before sending.';return;
+  }
   if(hadDraft){++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!f.elements.threadId.value;$('#recommend-action').disabled=!f.elements.threadId.value;$('#action-status').textContent='Destination changed. Your draft is preserved; ask the agent again if you want a new recommendation.';}
   else generateAction();
 };
@@ -112,7 +128,7 @@ $('#action-form').onsubmit=async event=>{
   try{
     await flushDraft();
     const receipt=await request('/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,threadId:form.elements.threadId.value,
-      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value});
+      action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!actionReviewSeed});
     $('#action-review').close();await openDelivery(receipt);
   }catch(error){notice(error.message);}finally{button.disabled=false;}
 };

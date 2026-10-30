@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory() as directory:
             page.evaluate('load()');card.get_by_role('button',name='Audit report',exact=False).click(timeout=5000)
             expect(page.locator('#work-report-body')).to_contain_text('Grade B')
             expect(page.locator('#work-report-body')).to_contain_text('Fixture <script> finding')
-            expect(page.locator('#work-fix-prompt')).to_have_value(report['fixPrompt'])
+            assert report['fixPrompt'] in page.locator('#work-fix-prompt').input_value()
             page.locator('#work-report').get_by_role('button',name='Close report').click()
             # The address exists in project metadata, not the separate tracker field.
             fixture=Path(directory)/'site';fixture.mkdir();(fixture/'index.html').write_text('<link rel="canonical" href="https://fixture.example/">')
