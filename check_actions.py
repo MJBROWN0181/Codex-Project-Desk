@@ -19,6 +19,7 @@ with tempfile.TemporaryDirectory() as directory:
     p['chats']=[dict(id=chat,title='Reply with studio confirmation',url='codex://threads/'+chat,at='2026-10-29T10:00:00Z')]
     server.save(p);service=DeskCodex(server);server.CODEX_SERVICE=service
     if not args.live:
+        service.refresh_replies=lambda:dict(refreshed=0,unavailable=[])
         service.native_chats=lambda:[dict(id=chat,title='Reply with studio confirmation')]
         service.recommendation=lambda body:dict(action='Agent recommended step',reason='It follows the previous result.',threadId=chat)
         def send(body):

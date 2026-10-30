@@ -44,7 +44,7 @@ def item_text(item):
 
 class DeskCodex:
     def __init__(self,store):
-        self.store=store;self.jobs={};self.jobs_lock=threading.Lock();self.audit_lock=threading.Lock()
+        self.store=store;self.jobs={};self.jobs_lock=threading.Lock();self.audit_lock=threading.Lock();self.replies_lock=threading.Lock()
         with store.MUTATION_LOCK:
             receipts=store.metadata('codexMessages') or {};changed=False
             for receipt in receipts.values():
@@ -125,7 +125,46 @@ class DeskCodex:
                 summary=dict(checkedAt=self.store.now(),checked=len(records),verified=sum(r['status']=='verified' for r in records),
                     cloud=sum(r['status']=='cloud' for r in records),unavailable=[r for r in records if r['status']=='unavailable'])
                 self.store.metadata('codexConnections',summary)
+            self.refresh_replies()
             return summary
+
+    def refresh_replies(self):
+        with self.replies_lock:return self._refresh_replies()
+
+    def _refresh_replies(self):
+        refreshed=0;failures=[]
+        with Client() as client:
+            for original in self.store.load_projects():
+                local=[c for c in original['chats'] if c.get('hostId','local')=='local' and c.get('connectionStatus')!='unavailable']
+                target=next((c for c in local if c['id']==original.get('preferredChatId')),None)
+                if not target and local:target=max(local,key=lambda c:self.store.utc_stamp(c['at']))
+                if not target:continue
+                try:
+                    page=client.call('thread/turns/list',dict(threadId=target['id'],limit=3,itemsView='full',sortDirection='desc'))
+                    reply=None
+                    for turn in page.get('data',[]):
+                        candidates=[i for i in turn.get('items',[]) if i.get('type')=='agentMessage' and
+                            (i.get('phase')=='final_answer' or (not i.get('phase') and turn.get('status')=='completed')) and item_text(i).strip()]
+                        if candidates:
+                            text=item_text(candidates[-1]);stamp=turn.get('completedAt') or turn.get('startedAt')
+                            reply=dict(threadId=target['id'],title=target['title'],text=text[:20000],truncated=len(text)>20000,
+                                at=self.store.utc_stamp(stamp or target['at']),turnId=turn['id'],checkedAt=self.store.now())
+                            break
+                    with self.store.MUTATION_LOCK:
+                        current=self.project(original['id'])
+                        if current.get('preferredChatId')!=original.get('preferredChatId'):continue
+                        if not any(c['id']==target['id'] for c in current['chats']):continue
+                        old=current.get('latestReply')
+                        if reply and (not old or old['threadId']!=reply['threadId'] or self.store.utc_stamp(reply['at'])>=self.store.utc_stamp(old['at'])):
+                            current['latestReply']=reply
+                        elif old and old['threadId']!=target['id']:current['latestReply']=None
+                        current['replyCheckedAt']=self.store.now();current.pop('replyCheckError',None)
+                        self.store.save(current);refreshed+=1
+                except Exception as exc:
+                    failures.append(dict(projectId=original['id'],error=str(exc)))
+                    with self.store.MUTATION_LOCK:
+                        current=self.project(original['id']);current['replyCheckError']='Latest reply could not be refreshed. The saved reply is shown.';self.store.save(current)
+        return dict(refreshed=refreshed,unavailable=failures,checkedAt=self.store.now())
 
     def open_chat(self,body):
         p=self.project(body.get('projectId'));identity=thread_id(body.get('threadId'))
@@ -195,8 +234,13 @@ class DeskCodex:
     def watch_receipts(self):
         # Reconcile acknowledgements after a slow app startup or a tracker restart;
         # this reads history only and NEVER sends a message again.
+        cycles=0
         while True:
             time.sleep(10)
+            cycles+=1
+            if cycles%3==0:
+                try:self.refresh_replies()
+                except Exception:pass
             receipts=self.store.metadata('codexMessages') or {}
             pending=[r for r in receipts.values() if r['status'] in ('queued','unknown')]
             if not pending:continue
@@ -252,6 +296,11 @@ class DeskCodex:
                 p['chats']=[c for c in p['chats'] if c['id']!=identity]+[link]
                 p['chats'].sort(key=lambda c:self.store.utc_stamp(c['at']),reverse=True)
                 p['preferredChatId']=identity;p['nextAction']=receipt['action'];p['nextActionReason']=receipt['reason']
+                draft=p.get('actionDraft')
+                try:draft_message=message_text(draft) if draft else None
+                except ValueError:draft_message=None
+                if draft and draft.get('threadId')==identity and draft_message==receipt['message']:
+                    p['actionDraft']=None;p['draftRevision']=p.get('draftRevision',0)+1
                 if p.get('suggestion',{} ) and p['suggestion'].get('source')=='Codex agent':p['suggestion']=None
                 self.store.save(p)
             try:local_open(identity)

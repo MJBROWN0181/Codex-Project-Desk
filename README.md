@@ -1,6 +1,14 @@
 # Codex Project Desk
 
-Project Desk version 1.1.1 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, agent recommendations, reviewed message delivery, and a persistent dark/light theme.
+Project Desk version 1.2.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It offers saved message drafts, pinned focus projects, latest Codex replies, editable next actions, activity history, completion tracking, GitHub refresh, Codex chat connections, reviewed message delivery, and a persistent dark/light theme.
+
+## Drafts, focus, and latest replies
+
+Review fields autosave as an unsent project draft, including the selected chat, step, reason, and extra instructions. Drafts use revision checks to prevent an older window overwriting a newer save, plus a browser-local recovery copy. Closing or reloading preserves edits. Restoring a draft does not generate over it or send it. Discard draft clears only the draft. Successful queue acknowledgement clears a matching submitted draft; newer edits are retained, and failed sends retain the draft.
+
+Pin projects from their cards to keep them first. Focus list shows pinned projects using the current filters and sort; Show all projects returns to the full list. Pins are stored with project data, and the selected view is remembered in the browser.
+
+Latest Codex reply shows saved final assistant text from the preferred linked local chat (or the most recent linked local chat), with the actual chat title, reply date, and expandable text. Commentary, reasoning, and tool output are excluded. Replies refresh on startup, about every 30 seconds while the server is running, and through the top Refresh button. These reads do not mark work complete or change Last worked on. Visible idle project lists also refresh every 30 seconds; open forms, expanded details, and selected text are left alone. Cloud chat references remain links rather than automatic local reply sources.
 
 Refresh beside the title updates saved project data without resetting the current search, filters, sort, or theme. Returning focus to the window also refreshes the list when no dialog is open, keeping in-progress form edits intact. Codex index import and connection checks retain their separate controls.
 
@@ -17,6 +25,8 @@ Run `python -m unittest -v test_tracker.py` for isolated data tests. For browser
 Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to this installation's existing integration-test chat; it must not be run against an unrelated account or without permission to message that chat.
 
 `python check_smoothness.py` covers header refresh, retained filters/theme, out-of-order responses, changing a chat target during recommendation generation, receipt-dialog races, and responsive layouts. It uses temporary data and does not send messages.
+
+Run `python -m unittest -v test_tracker.py test_codex_actions.py test_workflow_features.py` for the complete suite. `python check_workflow_features.py` verifies draft and pin persistence through an HTTP-server restart, draft discard, restored chat selection, escaped reply text, and the focus view, with no Codex messages sent.
 
 ## Next-action recommendations and Codex delivery
 

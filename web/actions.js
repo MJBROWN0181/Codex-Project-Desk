@@ -32,6 +32,7 @@ async function generateAction(){
     const answer=await waitCodexJob(job.id,null,()=>sequence===actionGeneration && $('#action-review').open);
     if(sequence!==actionGeneration || !$('#action-review').open)return;
     form.elements.action.value=answer.action;form.elements.reason.value=answer.reason;
+    markDraftChanged();
     updateActionPreview();$('#action-status').textContent='Agent recommendation ready. Review or edit it, add instructions, then send.';
   }catch(error){if(sequence===actionGeneration)$('#action-status').textContent=error.message;}
   finally{if(sequence===actionGeneration){$('#recommend-action').disabled=false;form.elements.action.readOnly=false;form.elements.reason.readOnly=false;$('#send-action').disabled=false;}}
@@ -39,14 +40,14 @@ async function generateAction(){
 async function openActionReview(project){
   actionReview=project;actionSendId=crypto.randomUUID();const openSequence=++actionGeneration;
   const form=$('#action-form');form.reset();
-  form.elements.action.readOnly=false;form.elements.reason.readOnly=false;
+  form.elements.action.readOnly=true;form.elements.reason.readOnly=true;form.elements.instructions.readOnly=true;
   form.elements.action.value=project.nextAction || project.suggestion?.text || '';
   form.elements.reason.value=project.nextActionReason || project.suggestion?.reason || '';
   $('#action-project').textContent=project.name;$('#action-status').textContent='Checking available Codex chats…';
   form.elements.threadId.innerHTML='<option value="">Loading chats…</option>';
   $('#send-action').disabled=true;$('#recommend-action').disabled=true;updateActionPreview();$('#action-review').showModal();
   try{
-    const result=await request('/api/codex/threads');
+    const [result,draft]=await Promise.all([request('/api/codex/threads'),restoreActionDraft(project.id,openSequence)]);
     if(openSequence!==actionGeneration || !$('#action-review').open)return;
     const all=new Map(result.chats.map(c=>[c.id,c]));
     const normalized=value=>(value || '').replace(/[\\/]+/g,'/').replace(/\/$/,'').toLowerCase();
@@ -54,10 +55,15 @@ async function openActionReview(project){
     const matching=project.path?result.chats.filter(c=>normalized(c.cwd)===normalized(project.path)):[];
     const ordered=[...linked.map(c=>all.get(c.id)),...result.chats.filter(c=>!linked.some(l=>l.id===c.id))];
     form.elements.threadId.innerHTML='<option value="">Choose a Codex chat</option>'+ordered.map(c=>`<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)}${linked.some(l=>l.id===c.id)?' (linked to this project)':''}</option>`).join('');
-    const preferred=all.has(project.preferredChatId)?project.preferredChatId:(linked[0]?.id || matching[0]?.id);
+    const preferred=draft?(all.has(draft.threadId)?draft.threadId:null):(all.has(project.preferredChatId)?project.preferredChatId:(linked[0]?.id || matching[0]?.id));
     if(preferred)form.elements.threadId.value=preferred;
     $('#send-action').disabled=false;$('#recommend-action').disabled=false;
-    if(preferred)generateAction();else $('#action-status').textContent='Choose the existing Codex chat that should handle this project. A recommendation will be generated for that chat.';
+    form.elements.action.readOnly=false;form.elements.reason.readOnly=false;form.elements.instructions.readOnly=false;
+    if(draft){
+      for(const key of ['action','reason','instructions'])form.elements[key].value=draft[key] || '';
+      updateActionPreview();$('#send-action').disabled=!preferred;
+      $('#action-status').textContent=preferred?'Saved draft restored. Review it before sending.':'The draft is preserved. Choose an available local chat before sending.';
+    }else if(preferred)generateAction();else $('#action-status').textContent='Choose the existing Codex chat that should handle this project. A recommendation will be generated for that chat.';
   }catch(error){if(openSequence===actionGeneration)$('#action-status').textContent=error.message;}
 }
 function showReceipt(receipt){
@@ -85,12 +91,17 @@ $('#delivery').addEventListener('close',()=>{
   ++deliveryWatch;load().catch(()=>{});
 });
 $('#action-form').addEventListener('input',updateActionPreview);
-$('#action-form').elements.threadId.onchange=()=>{actionSendId=crypto.randomUUID();generateAction();};
+$('#action-form').elements.threadId.onchange=()=>{
+  actionSendId=crypto.randomUUID();const hadDraft=!!activeDraftSession?.draft;markDraftChanged();
+  if(hadDraft){++actionGeneration;const f=$('#action-form');f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!f.elements.threadId.value;$('#recommend-action').disabled=!f.elements.threadId.value;$('#action-status').textContent='Destination changed. Your draft is preserved; ask the agent again if you want a new recommendation.';}
+  else generateAction();
+};
 $('#recommend-action').onclick=generateAction;
 $('#action-review').addEventListener('close',()=>{++actionGeneration;});
 $('#action-form').onsubmit=async event=>{
   event.preventDefault();const form=event.target,button=$('#send-action');button.disabled=true;++actionGeneration;
   try{
+    await flushDraft();
     const receipt=await request('/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,threadId:form.elements.threadId.value,
       action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value});
     $('#action-review').close();await openDelivery(receipt);

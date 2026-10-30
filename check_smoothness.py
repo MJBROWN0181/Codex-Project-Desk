@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory() as directory:
     service=DeskCodex(server);server.CODEX_SERVICE=service
     service.native_chats=lambda:[dict(id=CHAT,title='Fixture chat')]
     service.recommendation=lambda body:dict(action='Suggested step',reason='Fixture reason')
+    service.refresh_replies=lambda:dict(refreshed=0,unavailable=[])
     http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
     worker=threading.Thread(target=http.serve_forever,daemon=True);worker.start()
     try:

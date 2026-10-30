@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Desk</title><link rel="icon" href="/favicon.ico"><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/actions.js" defer></script></head>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Desk</title><link rel="icon" href="/favicon.ico"><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/actions.js" defer></script><script src="/drafts.js" defer></script></head>
 <body>
-<header><div class="brand-group"><a class="brand" href="/">Project Desk<span>Version 1.1.1</span></a><button id="refresh-desk" type="button" title="Refresh the project list">↻ Refresh</button></div><div class="header-actions"><button id="theme-toggle" type="button" role="switch" aria-checked="true">Dark mode: on</button><button id="add">+ Add project</button></div></header>
+<header><div class="brand-group"><a class="brand" href="/">Project Desk<span>Version 1.2.0</span></a><button id="refresh-desk" type="button" title="Refresh the project list">↻ Refresh</button></div><div class="header-actions"><button id="theme-toggle" type="button" role="switch" aria-checked="true">Dark mode: on</button><button id="add">+ Add project</button></div></header>
 <main>
 <section class="intro"><div><h1>Keep every project moving.</h1><p>One clear next step, wherever you left off.</p></div><button id="refresh">Refresh Codex index</button></section>
 <p id="source" class="source"></p>
 <div class="connection-bar"><p id="connection-summary">Chat connections are checked automatically when Project Desk starts.</p><button id="check-connections" type="button" class="quiet">Check chat connections</button></div>
 <div class="toolbar"><label class="search">Find a project<input id="search" type="search" placeholder="Search projects, actions, or blockers"></label><label>Status<select id="status"><option value="">All statuses</option><option>Unreviewed</option><option>Active</option><option>Waiting</option><option>Paused</option><option>Complete</option></select></label><label>Type<select id="kind"><option value="">All projects</option><option>Software</option><option>Business</option><option>Mixed</option><option>Website</option><option>App</option><option>Documents Render</option></select></label><label>Sort<select id="sort"><option value="recent">Last worked on</option><option value="name">Project name</option></select></label></div>
-<div class="list-heading"><h2>Your projects <span id="count"></span></h2><p>Suggestions stay separate until you accept them.</p></div>
+<div class="list-heading"><h2>Your projects <span id="count"></span></h2><button id="focus-only" type="button" class="quiet" aria-pressed="false">Focus list</button><p>Suggestions stay separate until you accept them.</p></div>
 <section id="projects" class="projects" aria-label="Projects"></section>
 </main>
 <div id="notice" role="status" aria-live="polite"></div>
@@ -34,7 +34,7 @@
 </form></dialog>
 <dialog id="action-review"><form id="action-form">
 <div class="dialog-heading"><h2>Review next action</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
-<p id="action-project"></p><label>Send to Codex chat<select name="threadId" aria-label="Send to Codex chat" required></select></label>
+<p id="action-project"></p><p id="draft-status" class="hint" role="status">Edits are saved automatically.</p><button id="discard-draft" type="button" class="quiet">Discard draft</button><label>Send to Codex chat<select name="threadId" aria-label="Send to Codex chat" required></select></label>
 <p id="action-status" class="hint" role="status"></p><button type="button" id="recommend-action" class="quiet">Ask agent to recommend again</button>
 <label>Next action<textarea name="action" rows="3" maxlength="3000" required></textarea></label>
 <label>Why this step<textarea name="reason" rows="3" maxlength="3000"></textarea></label>

@@ -37,6 +37,7 @@ class CodexActionTests(unittest.TestCase):
 
     def test_reviewed_send_preserves_edits_destination_and_receipt(self):
         body=self.payload();message=message_text(body)
+        server.save_draft(dict(projectId=self.project['id'],expectedRevision=0,draft={k:body[k] for k in ('threadId','action','reason','instructions')}))
         with patch('desk_codex.threading.Thread') as thread:
             receipt=self.service.send(body)
             duplicate=self.service.send(body)
@@ -59,6 +60,7 @@ class CodexActionTests(unittest.TestCase):
         self.assertEqual(p['blocker'],'Keep blocker')
         self.assertEqual(p['preferredChatId'],CHAT)
         self.assertEqual(p['activity'][0]['source'],'Codex request')
+        self.assertIsNone(p['actionDraft']);self.assertEqual(p['draftRevision'],2)
 
     def test_reused_send_id_cannot_change_destination_or_message(self):
         body=self.payload()
@@ -66,6 +68,19 @@ class CodexActionTests(unittest.TestCase):
             self.service.send(body)
             with self.assertRaises(ValueError):self.service.send(dict(body,action='Different message'))
             with self.assertRaises(ValueError):self.service.send(dict(body,threadId=str(uuid.uuid4())))
+
+    def test_send_keeps_a_newer_unsent_draft(self):
+        body=self.payload();message=message_text(body)
+        with patch('desk_codex.threading.Thread'):receipt=self.service.send(body)
+        server.save_draft(dict(projectId=self.project['id'],expectedRevision=0,
+            draft=dict(threadId=CHAT,action='Newer unsent step',reason='Different reason',instructions='Keep this draft')))
+        result=subprocess.CompletedProcess([],0,'Queued message '+str(uuid.uuid4())+' for thread '+CHAT+'.','')
+        with patch('desk_codex.Client',return_value=self.client(message)),patch('desk_codex.executable',return_value='codex.exe'),\
+             patch('desk_codex.subprocess.run',return_value=result),patch('desk_codex.local_open'):
+            self.service._send_worker(receipt)
+        saved=self.service.project(self.project['id'])
+        self.assertEqual(saved['actionDraft']['action'],'Newer unsent step')
+        self.assertEqual(saved['nextAction'],'Edited action')
 
     def test_timeout_is_unknown_and_is_not_automatically_retried(self):
         body=self.payload()

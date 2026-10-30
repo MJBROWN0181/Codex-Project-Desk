@@ -6,9 +6,11 @@ function deliveryLabel(receipt){
   return ({working:'Sending to Codex…',queued:'Queued in Codex',received:'Received by Codex',failed:'Send failed',unknown:'Delivery needs checking'})[receipt.status] || receipt.status;
 }
 let noticeTimer,projectLoadSequence=0;
+let focusOnly=false;
+try{focusOnly=localStorage.getItem('project-desk-focus')==='true';}catch{}
 function notice(text) { $('#notice').textContent = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(()=>$('#notice').textContent='',6500); }
 async function request(url, body) {
-  const response = await fetch(url, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const response = await fetch(url, body === undefined ? {cache:'no-store'} : {method:'POST',keepalive:url==='/api/drafts',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not save changes.'); return data;
 }
 async function load() {
@@ -24,14 +26,21 @@ async function load() {
 }
 function render() {
   const query = $('#search').value.toLowerCase();
-  let shown = projects.filter(p=>(!$('#status').value || p.status===$('#status').value) && (!$('#kind').value || p.kind===$('#kind').value) && [p.name,p.agency,p.nextAction,p.blocker,p.suggestion?.text].join(' ').toLowerCase().includes(query));
-  shown.sort((a,b)=>$('#sort').value==='name' ? a.name.localeCompare(b.name) : (b.activity[0]?.at || '').localeCompare(a.activity[0]?.at || '') || a.name.localeCompare(b.name));
+  let shown = projects.filter(p=>(!focusOnly || p.pinned) && (!$('#status').value || p.status===$('#status').value) && (!$('#kind').value || p.kind===$('#kind').value) && [p.name,p.agency,p.nextAction,p.blocker,p.suggestion?.text].join(' ').toLowerCase().includes(query));
+  shown.sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned) || ($('#sort').value==='name' ? a.name.localeCompare(b.name) : (b.activity[0]?.at || '').localeCompare(a.activity[0]?.at || '') || a.name.localeCompare(b.name)));
+  $('#focus-only').setAttribute('aria-pressed',String(focusOnly));$('#focus-only').textContent=focusOnly?'Show all projects':'Focus list';
   $('#count').textContent = `${shown.length} of ${projects.length}`;
   $('#projects').innerHTML = shown.map(p=>{
     const e=escapeHtml, a=p.activity[0], s=p.suggestion;
-    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><span class="badge ${e(p.status)}">${e(p.status)}</span></div><div class="card-body"><div class="next"><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Next action done</button>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}<div class="activity"><h4>Last worked on</h4><strong>${e(dateText(a?.at))}</strong>${a?`<p>${e(a.note)}</p><span class="source-label">${e(a.source)}</span>`:'<p>Log planning or progress to get started.</p>'}${p.activity.length>1?`<details><summary>Recent activity</summary><ol>${p.activity.slice(1,8).map(item=>`<li>${e(item.note)}<br>${e(dateText(item.at))} · ${e(item.source)}</li>`).join('')}</ol></details>`:''}</div>${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(c.title)}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer"><button data-action="edit">Edit project</button><button data-action="log">Log activity</button>${p.chats.length?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
-  }).join('') || '<p class="no-results">No projects match. Change your filters or add a project.</p>';
+    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><div class="card-controls"><span class="badge ${e(p.status)}">${e(p.status)}</span><button class="pin-project" data-action="pin" aria-pressed="${!!p.pinned}" aria-label="${p.pinned?'Unpin project':'Pin project'}">${p.pinned?'Pinned':'Pin'}</button></div></div><div class="card-body"><div class="next"><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Next action done</button>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}<div class="activity"><h4>Last worked on</h4><strong>${e(dateText(a?.at))}</strong>${a?`<p>${e(a.note)}</p><span class="source-label">${e(a.source)}</span>`:'<p>Log planning or progress to get started.</p>'}${p.activity.length>1?`<details><summary>Recent activity</summary><ol>${p.activity.slice(1,8).map(item=>`<li>${e(item.note)}<br>${e(dateText(item.at))} · ${e(item.source)}</li>`).join('')}</ol></details>`:''}</div>${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}${replyMarkup(p)}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(c.title)}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer">${p.actionDraft?'<button data-action="review">Resume draft</button>':''}<button data-action="edit">Edit project</button><button data-action="log">Log activity</button>${p.chats.length?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
+  }).join('') || `<p class="no-results">${focusOnly?'No pinned projects match. Show all projects to pin one, or adjust your filters.':'No projects match. Change your filters or add a project.'}</p>`;
 }
+function replyMarkup(p){
+  const r=p.latestReply,e=escapeHtml;
+  if(!r)return '<section class="latest-reply"><h4>Latest Codex reply</h4><p class="hint">No saved final reply yet. Link a local chat through the next action to see its reply here.</p></section>';
+  return `<section class="latest-reply"><h4>Latest Codex reply</h4><p class="reply-preview">${e(r.text.slice(0,280))}${r.text.length>280?'…':''}</p>${r.text.length>280?`<details><summary>Read full reply</summary><p class="reply-full">${e(r.text)}</p>${r.truncated?'<p class="hint">Open the chat for the complete reply.</p>':''}</details>`:''}<a href="codex://threads/${e(r.threadId)}">${e(r.title)}</a><small>${e(dateText(r.at))}</small>${p.replyCheckError?`<p class="hint">${e(p.replyCheckError)}</p>`:''}</section>`;
+}
+$('#focus-only').onclick=()=>{focusOnly=!focusOnly;try{localStorage.setItem('project-desk-focus',String(focusOnly));}catch{}render();};
 function openEditor(project, suggestion=false) {
   editing = project?.id || null;
   const form=$('#project-form'); form.reset(); $('#editor-title').textContent=project?'Edit project':'Add project';
@@ -94,6 +103,9 @@ for(const id of ['search','status','kind','sort']) $('#'+id).addEventListener(id
 $('#projects').onclick=async event=>{
   const button=event.target.closest('button[data-action]'); if(!button) return;
   const p=projects.find(p=>p.id===button.closest('article').dataset.id), action=button.dataset.action;
+  if(action==='pin'){
+    button.disabled=true;try{await request('/api/projects',{id:p.id,pinned:!p.pinned});await load();}catch(error){notice(error.message);}finally{button.disabled=false;}return;
+  }
   if(action==='edit' || action==='change') return openEditor(p,action==='change');
   if(action==='review')return openActionReview(p);
   if(action==='receipt'){
@@ -142,10 +154,12 @@ $('#refresh').onclick=async()=>{
 load().catch(error=>notice(error.message));
 $('#refresh-desk').onclick=async()=>{
   const button=$('#refresh-desk');button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Refreshing…';
-  try{await load();notice('Project list refreshed.');}
+  try{await load();const job=await request('/api/codex/replies',{});await waitCodexJob(job.id);await load();notice('Project list refreshed.');}
   catch(error){notice(error.message);}
   finally{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='↻ Refresh';}
 };
-window.addEventListener('focus',()=>{
-  if(!document.querySelector('dialog[open]'))load().catch(()=>{});
-});
+function refreshWhenIdle(){
+  if(document.visibilityState==='visible' && !document.querySelector('dialog[open],#projects details[open]') && !window.getSelection()?.toString())load().catch(()=>{});
+}
+window.addEventListener('focus',refreshWhenIdle);
+setInterval(refreshWhenIdle,30000);

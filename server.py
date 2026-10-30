@@ -239,6 +239,9 @@ def update(payload):
     if not p:
         raise ValueError('Project was not found.')
     previous_action=p.get('nextAction','')
+    if 'pinned' in payload:
+        if not isinstance(payload['pinned'],bool):raise ValueError('Pinned must be true or false.')
+        p['pinned']=payload['pinned']
     for key in ('name','kind','status','nextAction','blocker','repo','agency'):
         if key in payload:
             if not isinstance(payload[key], str) or len(payload[key]) > 3000:
@@ -266,6 +269,25 @@ def update(payload):
         event(p, now(), note, 'Manual update', str(uuid.uuid4()))
     save(p)
     return p
+
+@serialized
+def save_draft(payload):
+    p=next((p for p in load_projects() if p['id']==payload.get('projectId')),None)
+    if not p:raise ValueError('Project was not found.')
+    revision=p.get('draftRevision',0)
+    if payload.get('expectedRevision')!=revision:
+        raise ValueError('This draft changed in another window. Your local copy is preserved; reopen the review to load the saved draft.')
+    draft=payload.get('draft')
+    if draft is not None:
+        if not isinstance(draft,dict):raise ValueError('Invalid draft.')
+        clean={}
+        for key,limit in [('threadId',100),('action',3000),('reason',3000),('instructions',6000)]:
+            value=draft.get(key,'')
+            if not isinstance(value,str) or len(value)>limit:raise ValueError('Draft text is too long.')
+            clean[key]=value
+        draft={**clean,'updatedAt':now()}
+    p['actionDraft']=draft;p['draftRevision']=revision+1;save(p)
+    return dict(draft=draft,revision=p['draftRevision'])
 
 @serialized
 def complete_action(payload):
@@ -329,6 +351,7 @@ def move_chat(payload):
         for p in projects:
             p['chats'] = [c for c in p['chats'] if c['id'] != thread_id]
             p['activity'] = [a for a in p['activity'] if a['id'] != 'codex:' + thread_id]
+            if p['id']!=target_id and (p.get('latestReply') or {}).get('threadId')==thread_id:p['latestReply']=None
         target['chats'].append(chat)
         target['chats'].sort(key=lambda c:c['at'], reverse=True)
         for a in activity:
@@ -373,9 +396,13 @@ class Handler(BaseHTTPRequestHandler):
         if route == '/api/codex/threads':
             try:return self.json_response(dict(chats=codex_service().native_chats()))
             except (ValueError,OSError,subprocess.TimeoutExpired) as exc:return self.json_response({'error':str(exc)},400)
+        if route.startswith('/api/drafts/'):
+            p=next((p for p in load_projects() if p['id']==route.rsplit('/',1)[1]),None)
+            if not p:return self.json_response({'error':'Project was not found.'},404)
+            return self.json_response(dict(draft=p.get('actionDraft'),revision=p.get('draftRevision',0)))
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
                  '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript'),
-                 '/actions.js': ('actions.js','text/javascript')}
+                 '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript')}
         if route not in files:
             return self.json_response({'error':'Not found'}, 404)
         name, mime = files[route]
@@ -392,7 +419,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response({'error':'This request must come from the tracker.'},403)
         try:
             length = int(self.headers.get('Content-Length','0'))
-            if not 0 < length <= 32000:
+            if not 0 < length <= (96000 if self.path=='/api/drafts' else 32000):
                 raise ValueError('Request is too large or empty.')
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
@@ -411,6 +438,10 @@ class Handler(BaseHTTPRequestHandler):
                 service=codex_service();result=service.start_job(lambda:service.recommendation(body))
             elif self.path == '/api/codex/send':
                 result=codex_service().send(body)
+            elif self.path == '/api/drafts':
+                result=save_draft(body)
+            elif self.path == '/api/codex/replies':
+                service=codex_service();result=service.start_job(service.refresh_replies)
             elif self.path == '/api/github':
                 p = next((p for p in load_projects() if p['id'] == body.get('id')), None)
                 if not p:
