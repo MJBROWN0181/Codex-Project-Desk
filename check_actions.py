@@ -22,7 +22,8 @@ with tempfile.TemporaryDirectory() as directory:
     server.save(p);service=DeskCodex(server);server.CODEX_SERVICE=service
     if not args.live:
         service.refresh_replies=lambda:dict(refreshed=0,unavailable=[])
-        service.native_chats=lambda:[dict(id=chat,title='Reply with studio confirmation')]
+        other_chat=str(uuid.uuid4())
+        service.native_chats=lambda:[dict(id=chat,title='Reply with studio confirmation'),dict(id=other_chat,title='An older chat with a long title that wraps and remains readable across the full picker width')]
         recommend_finish=threading.Event();recommend_state={'fail':False}
         def recommend(body):
             if not recommend_finish.wait(10):raise ValueError('Test recommendation timed out')
@@ -68,27 +69,39 @@ with tempfile.TemporaryDirectory() as directory:
             Path('output').mkdir(exist_ok=True)
             # Exercise the actual review selector's rows in both themes, including
             # unselected options, without sending any message or changing a target.
-            selector=review.get_by_label('Send to Codex chat',exact=True)
             for theme in ('light','dark'):
                 page.evaluate('(theme)=>document.documentElement.dataset.theme=theme',theme)
-                colors=selector.evaluate('''select=>Array.from(select.options,option=>{
-                  const css=getComputedStyle(option);
-                  return {color:css.color,background:css.backgroundColor};
-                })''')
+                review.locator('#chat-picker-toggle').click()
+                choice=review.locator('.chat-choice').first
+                expect(choice).to_be_visible()
+                expect(choice).to_contain_text('Reply with studio confirmation')
+                pair=choice.evaluate("node=>({color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor})")
                 def luminance(css):
                     import re
                     channels=[int(n)/255 for n in re.findall(r'\d+',css)[:3]]
-                    linear=[n/12.92 if n<=.04045 else ((n+.055)/1.055)**2.4 for n in channels]
-                    return sum(n*w for n,w in zip(linear,[.2126,.7152,.0722]))
-                for pair in colors:
-                    assert pair['background']!='rgba(0, 0, 0, 0)',pair
-                    light,dark=sorted([luminance(pair['color']),luminance(pair['background'])],reverse=True)
-                    assert (light+.05)/(dark+.05)>=4.5,(theme,pair)
-                # Listbox rendering exposes option rows in a browser screenshot;
-                # native operating-system popups may be painted outside the page.
-                selector.evaluate('select=>select.size=4')
+                    return sum((n/12.92 if n<=.04045 else ((n+.055)/1.055)**2.4)*w for n,w in zip(channels,[.2126,.7152,.0722]))
+                light,dark=sorted([luminance(pair['color']),luminance(pair['background'])],reverse=True)
+                assert (light+.05)/(dark+.05)>=4.5,(theme,pair)
+                review.get_by_label('Find a chat',exact=True).fill('No matching title')
+                expect(review.locator('#chat-picker-empty')).to_be_visible()
+                review.get_by_label('Find a chat',exact=True).fill('studio')
+                expect(choice).to_be_visible()
                 page.screenshot(path=f'output/chat-options-{theme}.png')
-                selector.evaluate('select=>select.removeAttribute("size")')
+                review.get_by_label('Find a chat',exact=True).press('ArrowDown')
+                expect(choice).to_be_focused()
+                choice.press('Enter')
+                expect(review.locator('#chat-picker-panel')).to_be_hidden()
+            if not args.live:
+                review.locator('#chat-picker-toggle').click()
+                review.get_by_label('Find a chat',exact=True).fill('older chat')
+                review.locator('.chat-choice').click()
+                expect(review.get_by_label('Stored chat destination',exact=True)).to_have_value(other_chat)
+                expect(review.get_by_label('Next action',exact=True)).to_have_value('Agent recommended step')
+                review.locator('#chat-picker-toggle').click()
+                review.get_by_label('Find a chat',exact=True).fill('studio')
+                review.locator('.chat-choice').click()
+            page.set_viewport_size({'width':1100,'height':768})
+            assert review.locator('#send-action').bounding_box()['y'] < 768
             page.screenshot(path='output/review-next-action.png')
             expect(review.get_by_label('Next action',exact=True)).not_to_be_empty()
             expect(review.get_by_label('Why this step',exact=True)).not_to_be_empty()

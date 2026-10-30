@@ -27,7 +27,7 @@ class Client:
             stderr=subprocess.DEVNULL,text=True,encoding='utf-8',bufsize=1,creationflags=creation_flags())
         self.reader=threading.Thread(target=self._read,daemon=True);self.reader.start()
         try:
-            self.call('initialize',{'clientInfo':{'name':'codex_project_desk','title':'Project Desk','version':'2.1.0'}})
+            self.call('initialize',{'clientInfo':{'name':'codex_project_desk','title':'Project Desk','version':'2.1.1'}})
             self.process.stdin.write(json.dumps({'method':'initialized','params':{}})+'\n');self.process.stdin.flush()
         except Exception:
             self.close();raise

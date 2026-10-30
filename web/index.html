@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Desk</title><link rel="icon" href="/favicon.ico"><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/control.css"><script src="/control.js" defer></script><script src="/setup.js" defer></script><script src="/app.js" defer></script><script src="/actions.js" defer></script><script src="/drafts.js" defer></script></head>
 <body>
-<header><div class="brand-group"><a class="brand" href="/">Project Desk<span>Version 2.1.0</span></a><button id="refresh-desk" type="button" title="Refresh the project list">↻ Refresh</button></div><div class="header-actions"><button id="theme-toggle" type="button" role="switch" aria-checked="true">Dark mode: on</button><button id="setup-help" type="button" class="quiet">Getting started</button><button id="add">+ Add project</button></div></header>
+<header><div class="brand-group"><a class="brand" href="/">Project Desk<span>Version 2.1.1</span></a><button id="refresh-desk" type="button" title="Refresh the project list">↻ Refresh</button></div><div class="header-actions"><button id="theme-toggle" type="button" role="switch" aria-checked="true">Dark mode: on</button><button id="setup-help" type="button" class="quiet">Getting started</button><button id="add">+ Add project</button></div></header>
 <main>
 <section class="intro"><div><h1>Keep every project moving.</h1><p>One clear next step, wherever you left off.</p></div><button id="refresh">Refresh Codex index</button></section>
 <p id="source" class="source"></p>
@@ -34,13 +34,15 @@
 </form></dialog>
 <dialog id="action-review"><form id="action-form">
 <div class="dialog-heading"><h2>Review next action</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div>
-<p id="action-project"></p><p id="draft-status" class="hint" role="status">Edits are saved automatically.</p><button id="discard-draft" type="button" class="quiet">Discard draft</button><label>Send to Codex chat<select name="threadId" aria-label="Send to Codex chat" required></select></label>
+<p id="action-project"></p><div class="review-draft"><p id="draft-status" class="hint" role="status">Edits are saved automatically.</p><button id="discard-draft" type="button" class="quiet">Discard draft</button></div>
+<div id="chat-destination"><span id="chat-picker-label">Send to Codex chat</span><select name="threadId" aria-label="Stored chat destination" hidden></select><button type="button" id="chat-picker-toggle" class="quiet" aria-labelledby="chat-picker-label chat-picker-value" aria-expanded="false" aria-controls="chat-picker-panel"><span id="chat-picker-value">Loading chats…</span><span aria-hidden="true">▾</span></button><div id="chat-picker-panel" hidden><label>Find a chat<input id="chat-picker-search" type="search" placeholder="Search chat titles" autocomplete="off"></label><div id="chat-picker-options" aria-label="Available Codex chats"></div><p id="chat-picker-empty" class="hint" hidden>No matching chats.</p></div></div>
+<p id="audit-destination" class="hint" hidden>A new chat named <strong>Audit</strong> will be created in this project's folder when you send.</p>
 <p id="action-status" class="hint" role="status"></p><div id="recommendation-thinking" class="recommendation-thinking" role="status" aria-live="polite" hidden><span class="recommendation-spinner" aria-hidden="true"></span><div><strong>Agent is thinking…</strong><small>Reviewing the project and recent chat to recommend the next step.</small></div></div><button type="button" id="recommend-action" class="quiet" aria-busy="false">Ask agent to recommend again</button>
 <label>Next action<textarea name="action" rows="3" maxlength="3000" required></textarea></label>
 <label>Why this step<textarea name="reason" rows="3" maxlength="3000"></textarea></label>
 <label>Additional instructions (optional)<textarea name="instructions" rows="3" maxlength="6000" placeholder="Add details, changes, or anything else Codex should consider"></textarea></label>
 <details><summary>Message preview</summary><pre id="action-preview"></pre></details>
-<p class="hint">Send delivers this reviewed message to the selected existing local chat and opens it in Codex. Cloud chats remain available through their links.</p>
+<p id="action-send-help" class="hint">Send delivers this reviewed message to the selected local chat and opens it in Codex.</p>
 <div class="dialog-actions"><button type="button" class="quiet close">Cancel</button><button type="submit" id="send-action">Send to Codex</button></div>
 </form></dialog>
 <dialog id="delivery"><div class="dialog-heading"><h2 id="delivery-title">Sending to Codex</h2><button type="button" class="quiet close" aria-label="Close dialog">×</button></div><p id="delivery-chat"></p><p id="delivery-note" role="status"></p><details><summary>Message</summary><pre id="delivery-message"></pre></details></dialog>

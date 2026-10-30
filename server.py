@@ -523,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                 service=codex_service();result=service.start_job(lambda:service.recommendation(body))
             elif self.path == '/api/codex/send':
                 result=codex_service().send(body)
+            elif self.path == '/api/codex/send-audit':
+                result=codex_service().send_audit(body)
             elif self.path == '/api/project/control':
                 result=codex_service().control.control(body)
             elif self.path == '/api/project/queue':

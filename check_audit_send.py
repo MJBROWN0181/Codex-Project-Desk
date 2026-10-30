@@ -26,9 +26,9 @@ with tempfile.TemporaryDirectory() as directory:
     def recommend(body):recommendations.append(body);raise ValueError('An audit send must not generate a different recommendation')
     service.recommendation=recommend
     def send(body):
-        sent.append(copy.deepcopy(body));r=dict(id=body['requestId'],projectId=p['id'],threadId=body['threadId'],status='received',title='Reviewed destination',message=message_text(body),createdAt=server.now())
+        sent.append(copy.deepcopy(body));r=dict(id=body['requestId'],projectId=p['id'],threadId=other,status='received',title='Audit',message=message_text(body),createdAt=server.now())
         server.metadata('codexMessages',{r['id']:r});return r
-    service.send=send
+    service.send_audit=send
     http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);worker=threading.Thread(target=http.serve_forever,daemon=True);worker.start()
     try:
         with sync_playwright() as tool:
@@ -48,7 +48,8 @@ with tempfile.TemporaryDirectory() as directory:
             Path('output').mkdir(exist_ok=True);page.screenshot(path='output/audit-highlights-desktop.png')
             report.get_by_role('button',name='Send to Codex',exact=True).click();review=page.locator('#action-review')
             expect(review.get_by_role('heading',name='Review audit fixes',exact=True)).to_be_visible()
-            expect(review.get_by_label('Send to Codex chat',exact=True)).to_have_value(CHAT)
+            expect(review.locator('#audit-destination')).to_be_visible()
+            expect(review.locator('#chat-destination')).to_be_hidden()
             expect(review.locator('#recommend-action')).to_be_hidden()
             assert not sent and not recommendations
             instructions=review.get_by_label('Additional instructions (optional)',exact=True)
@@ -58,11 +59,11 @@ with tempfile.TemporaryDirectory() as directory:
             assert service.project(p['id'])['actionDraft']==original
             page.get_by_role('button',name='Audit report',exact=False).click();report.get_by_role('button',name='Send to Codex',exact=True).click()
             expect(instructions).to_have_value(edited)
-            review.get_by_label('Send to Codex chat',exact=True).select_option(other)
+            expect(review.locator('#audit-destination')).to_contain_text('Audit')
             expect(instructions).to_have_value(edited);assert not recommendations and not sent
             review.get_by_role('button',name='Send to Codex',exact=True).click()
             expect(page.locator('#delivery-title')).to_have_text('Received by Codex')
-            assert len(sent)==1 and sent[0]['threadId']==other and sent[0]['preserveActionDraft']
+            assert len(sent)==1 and 'threadId' not in sent[0] and sent[0]['preserveActionDraft']
             assert sent[0]['instructions'].replace('\r\n','\n')==edited.replace('\r\n','\n'),(len(sent[0]['instructions']),len(edited),repr(sent[0]['instructions'][-100:]),repr(edited[-100:]))
             expect(page.locator('#delivery-message')).to_contain_text('added scenario')
             assert service.project(p['id'])['actionDraft']==original

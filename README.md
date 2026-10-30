@@ -1,15 +1,18 @@
 # Codex Project Desk
 
-Project Desk version 2.1.0 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
+Project Desk version 2.1.1 is a local project tracker for software, websites, apps, business work, and document-rendering jobs. It includes completion-driven Codex work queues, project controls, readiness reviews, and a coordinated finishing team alongside saved drafts, pins, latest replies, activity, and dark/light themes.
 
 ## Work, queue, and finishing controls
 
 Audit reports highlight the grade, highest-priority findings, failed checks,
 and verification gaps. Other findings, check results, and full reviewer evidence
 remain expandable. Copy fix prompt and Send to Codex are available beside the
-recommended prompt. Sending first opens an editable review and an explicit local
-chat selector; it never generates a replacement recommendation or sends before
-the final Send to Codex click. Audit edits save in a separate browser draft, keeping
+recommended prompt. Sending first opens an editable review. The final Send to Codex
+click creates a new local chat named Audit in the project's existing folder and
+delivers the reviewed fixes there, never to an older chat. Cancelling creates no
+chat. The project must have an existing local folder. Normal next-action reviews
+use a searchable chat picker with readable, wrapping rows in dark and light mode.
+Audit review never generates a replacement recommendation. Audit edits save in a separate browser draft, keeping
 the existing next-action draft intact. Advisor fix prompts have the same workflow;
 unanimous shelving reports expose no fix-prompt copy or send controls.
 

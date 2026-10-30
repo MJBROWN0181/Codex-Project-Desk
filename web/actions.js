@@ -1,5 +1,31 @@
 let actionReview=null, actionGeneration=0, actionSendId=null,deliveryWatch=0,actionReviewSeed=null;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let pickerChats=[];
+function renderChatPicker(){
+  const select=$('#action-form').elements.threadId,query=$('#chat-picker-search').value.trim().toLowerCase();
+  const shown=pickerChats.filter(c=>c.title.toLowerCase().includes(query));
+  $('#chat-picker-value').textContent=pickerChats.find(c=>c.id===select.value)?.title || 'Choose a Codex chat';
+  $('#chat-picker-options').innerHTML=shown.map(c=>`<button type="button" class="chat-choice" data-chat="${escapeHtml(c.id)}" aria-pressed="${c.id===select.value}"><span>${escapeHtml(c.title)}</span><small>${c.linked?'Linked to this project':'Other local chat'}${c.cwd?' · '+escapeHtml(c.cwd):''}</small></button>`).join('');
+  $('#chat-picker-empty').hidden=!!shown.length;
+}
+function closeChatPicker(){ $('#chat-picker-panel').hidden=true;$('#chat-picker-toggle').setAttribute('aria-expanded','false'); }
+$('#chat-picker-toggle').onclick=()=>{
+  const opening=$('#chat-picker-panel').hidden;$('#chat-picker-panel').hidden=!opening;$('#chat-picker-toggle').setAttribute('aria-expanded',String(opening));
+  if(opening){$('#chat-picker-search').value='';renderChatPicker();$('#chat-picker-search').focus();}
+};
+$('#chat-picker-search').oninput=renderChatPicker;
+$('#chat-picker-options').onclick=event=>{
+  const choice=event.target.closest('[data-chat]');if(!choice)return;
+  const select=$('#action-form').elements.threadId;select.value=choice.dataset.chat;closeChatPicker();renderChatPicker();$('#chat-picker-toggle').focus();select.dispatchEvent(new Event('change'));
+};
+$('#chat-picker-panel').onkeydown=event=>{
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeChatPicker();$('#chat-picker-toggle').focus();return;}
+  if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+    const buttons=[...$('#chat-picker-options').querySelectorAll('button')];if(!buttons.length)return;
+    event.preventDefault();let i=buttons.indexOf(document.activeElement);
+    i=event.key==='Home'?0:event.key==='End'?buttons.length-1:event.key==='ArrowDown'?(i+1)%buttons.length:(i-1+buttons.length)%buttons.length;buttons[i].focus();
+  }
+};
 async function waitCodexJob(id,onUpdate=null,shouldContinue=()=>true){
   for(let i=0;i<240;i++){
     if(!shouldContinue())throw new Error('Recommendation canceled.');
@@ -51,6 +77,10 @@ async function openActionReview(project,seed=null){
   $('#recommend-action').hidden=!!seed;
   setRecommendationBusy(false);
   const form=$('#action-form');form.reset();
+  closeChatPicker();pickerChats=[];$('#chat-picker-search').value='';
+  $('#chat-destination').hidden=!!seed;$('#audit-destination').hidden=!seed;form.elements.threadId.disabled=!!seed;
+  $('#chat-picker-toggle').disabled=true;
+  $('#action-send-help').textContent=seed?'Send creates a new Audit chat for this project and delivers the reviewed fixes. Existing chats are preserved.':'Send delivers this reviewed message to the selected local chat and opens it in Codex.';
   form.elements.action.readOnly=true;form.elements.reason.readOnly=true;form.elements.instructions.readOnly=true;
   form.elements.action.value=seed?.action || project.nextAction || project.suggestion?.text || '';
   form.elements.reason.value=seed?.reason || project.nextActionReason || project.suggestion?.reason || '';
@@ -59,7 +89,7 @@ async function openActionReview(project,seed=null){
   form.elements.threadId.innerHTML='<option value="">Loading chats…</option>';
   $('#send-action').disabled=true;$('#recommend-action').disabled=true;updateActionPreview();$('#action-review').showModal();
   try{
-    const [result,draft]=await Promise.all([request('/api/codex/threads'),restoreActionDraft(project.id,openSequence,seed?.key)]);
+    const [result,draft]=await Promise.all([seed?Promise.resolve({chats:[]}):request('/api/codex/threads'),restoreActionDraft(project.id,openSequence,seed?.key)]);
     if(openSequence!==actionGeneration || !$('#action-review').open)return;
     const all=new Map(result.chats.map(c=>[c.id,c]));
     const normalized=value=>(value || '').replace(/[\\/]+/g,'/').replace(/\/$/,'').toLowerCase();
@@ -69,20 +99,22 @@ async function openActionReview(project,seed=null){
     form.elements.threadId.innerHTML='<option value="">Choose a Codex chat</option>'+ordered.map(c=>`<option value="${escapeHtml(c.id)}">${escapeHtml(c.title)}${linked.some(l=>l.id===c.id)?' (linked to this project)':''}</option>`).join('');
     const preferred=draft?(all.has(draft.threadId)?draft.threadId:null):(all.has(project.preferredChatId)?project.preferredChatId:(linked[0]?.id || matching[0]?.id));
     if(preferred)form.elements.threadId.value=preferred;
-    $('#send-action').disabled=false;$('#recommend-action').disabled=false;
+    pickerChats=ordered.map(c=>({...c,linked:linked.some(l=>l.id===c.id)}));renderChatPicker();$('#chat-picker-toggle').disabled=false;
+    $('#send-action').disabled=!seed && !preferred;$('#recommend-action').disabled=!preferred;
     form.elements.action.readOnly=false;form.elements.reason.readOnly=false;form.elements.instructions.readOnly=false;
     if(draft){
       for(const key of ['action','reason','instructions'])form.elements[key].value=draft[key] || '';
-      updateActionPreview();$('#send-action').disabled=!preferred;
+      updateActionPreview();$('#send-action').disabled=!seed && !preferred;
       $('#action-status').textContent=preferred?'Saved draft restored. Review it before sending.':'The draft is preserved. Choose an available local chat before sending.';
     }else if(seed){
-      $('#send-action').disabled=!preferred;
-      $('#action-status').textContent=preferred?'Audit fix prompt ready. Review or edit it before sending.':'Choose the existing local Codex chat for these audit fixes.';
+      $('#send-action').disabled=false;
+      $('#action-status').textContent='Audit fix prompt ready. Review or edit it before sending to a new Audit chat.';
       markDraftChanged();updateActionPreview();
     }else if(preferred)generateAction();else $('#action-status').textContent='Choose the existing Codex chat that should handle this project. A recommendation will be generated for that chat.';
     if(seed && project.workPaused){
       $('#send-action').disabled=true;$('#action-status').textContent='This project is paused. Resume its queue on the card before sending these fixes. Your audit edits are saved separately.';
     }
+    if(seed && !project.workPaused)$('#action-status').textContent='Review the fixes below. Send will create a new chat named Audit; nothing has been sent.';
   }catch(error){if(openSequence===actionGeneration)$('#action-status').textContent=error.message;}
 }
 function showReceipt(receipt){
@@ -127,7 +159,8 @@ $('#action-form').onsubmit=async event=>{
   event.preventDefault();const form=event.target,button=$('#send-action');button.disabled=true;++actionGeneration;
   try{
     await flushDraft();
-    const receipt=await request('/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,threadId:form.elements.threadId.value,
+    if(!actionReviewSeed && !form.elements.threadId.value)throw new Error('Choose a Codex chat before sending.');
+    const receipt=await request(actionReviewSeed?'/api/codex/send-audit':'/api/codex/send',{requestId:actionSendId,projectId:actionReview.id,...(actionReviewSeed?{}:{threadId:form.elements.threadId.value}),
       action:form.elements.action.value,reason:form.elements.reason.value,instructions:form.elements.instructions.value,preserveActionDraft:!!actionReviewSeed});
     $('#action-review').close();await openDelivery(receipt);
   }catch(error){notice(error.message);}finally{button.disabled=false;}

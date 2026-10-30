@@ -225,6 +225,7 @@ class DeskCodex:
             return receipts[identity]
 
     def _confirm(self,receipt,client):
+        if not receipt.get('threadId'):return False
         history=client.call('thread/turns/list',dict(threadId=receipt['threadId'],limit=5,itemsView='full',sortDirection='desc'))
         cutoff=datetime.fromisoformat(receipt['createdAt']).timestamp()-2
         for turn in history.get('data',[]):
@@ -258,29 +259,38 @@ class DeskCodex:
                         except Exception:continue
             except Exception:continue
 
+    def send_audit(self,body):
+        return self.send(dict(body,preserveActionDraft=True),kind='audit')
+
     def send(self,body,internal=False,kind='normal'):
-        p=self.project(body.get('projectId'));identity=thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
+        p=self.project(body.get('projectId'));new_audit=kind=='audit'
+        identity=None if new_audit else thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
         message=message_text(body)
         if not isinstance(body.get('preserveActionDraft',False),bool):raise ValueError('Invalid draft preservation option.')
         with self.store.MUTATION_LOCK:
             receipts=self.store.metadata('codexMessages') or {}
             if request in receipts:
                 existing=receipts[request]
-                if (existing['threadId'],existing['projectId'],existing['message'])!=(identity,p['id'],message):
+                same_target=existing.get('newAuditChat',False)==new_audit and (new_audit or existing['threadId']==identity)
+                if not same_target or (existing['projectId'],existing['message'])!=(p['id'],message):
                     raise ValueError('This send request was already used for a different message.')
                 return existing
             p=self.project(p['id'])
+            if new_audit:
+                from project_ops import ProjectOps
+                audit_folder=str(ProjectOps(self.store).folder(p))
             from work_control import busy
             if busy(p):raise ValueError('This project already has work in progress. Add content to its queue instead.')
             if not internal and (p.get('workPaused') or any(i['state'] in ('pending','dispatching') for i in p.get('contentQueue',[]))):
                 raise ValueError('Resume and finish queued additions before sending a new next action.')
-            if any(other['id']!=p['id'] and busy(other) and other.get('workState',{}).get('threadId')==identity for other in self.store.load_projects()):
+            if identity and any(other['id']!=p['id'] and busy(other) and other.get('workState',{}).get('threadId')==identity for other in self.store.load_projects()):
                 raise ValueError('Another project has work in progress in this chat. Wait for it to finish.')
-            if any(r['threadId']==identity and r['status'] in ('working','queued') for r in receipts.values()):
+            if identity and any(r['threadId']==identity and r['status'] in ('working','queued') for r in receipts.values()):
                 raise ValueError('A message is already waiting for confirmation in this chat. Check its delivery receipt before sending another.')
             receipt=dict(id=request,threadId=identity,projectId=p['id'],message=message,action=body['action'].strip(),reason=body.get('reason','').strip(),
                 status='working',createdAt=self.store.now(),managed=True,preserveActionDraft=body.get('preserveActionDraft',False))
             receipts[request]=receipt
+            if new_audit:receipt.update(newAuditChat=True,cwd=audit_folder,title='Audit',note='Creating a new Audit chat in the project folder.')
             p['workState']=dict(phase='sending',threadId=identity,requestId=request,kind=kind,startedAt=self.store.now(),detail='Sending reviewed work to Codex.')
             self.store.mark_reviewed(p)
             p['suggestion']=None;p['needsRecommendation']=False
@@ -299,6 +309,15 @@ class DeskCodex:
         identity=receipt['threadId'];request=receipt['id'];queued=False;attempted=False;accepted=False
         try:
             with Client() as client:
+                if receipt.get('newAuditChat') and not identity:
+                    t=client.call('thread/start',dict(cwd=receipt['cwd'],ephemeral=False))['thread']
+                    identity=thread_id(t['id']);receipt['threadId']=identity
+                    # Persist the returned identity before naming or queueing. A
+                    # retry only reads this receipt; it never creates twice.
+                    with self.store.MUTATION_LOCK:
+                        self._receipt(request,threadId=identity)
+                        p=self.project(receipt['projectId']);p['workState']['threadId']=identity;self.store.save(p)
+                    client.call('thread/name/set',dict(threadId=identity,name='Audit'))
                 t=client.read_thread(identity)
                 if t['id']!=identity:raise ValueError('Chat identity did not match.')
                 before=client.call('thread/turns/list',dict(threadId=identity,limit=5,itemsView='notLoaded'))

@@ -64,7 +64,7 @@ $('#discard-draft').onclick=async()=>{
     try{localStorage.removeItem(session.storageKey);}catch{}
     clearTimeout(session.timer);session.draft=null;session.saved=session.changed;
     const f=$('#action-form');f.elements.action.value=actionReviewSeed?.action || '';f.elements.reason.value=actionReviewSeed?.reason || '';f.elements.instructions.value=actionReviewSeed?.instructions || '';
-    f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!f.elements.threadId.value || !!actionReview.workPaused;
+    f.elements.action.readOnly=false;f.elements.reason.readOnly=false;$('#send-action').disabled=!!actionReview.workPaused;
     updateActionPreview();$('#draft-status').textContent='Audit edits discarded. The original audit prompt is shown; your next-action draft is unchanged.';return;
   }
   try{

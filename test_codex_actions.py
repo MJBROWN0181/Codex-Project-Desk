@@ -69,6 +69,59 @@ class CodexActionTests(unittest.TestCase):
             with self.assertRaises(ValueError):self.service.send(dict(body,action='Different message'))
             with self.assertRaises(ValueError):self.service.send(dict(body,threadId=str(uuid.uuid4())))
 
+    def audit_payload(self):
+        p=self.service.project(self.project['id']);p['path']=self.temp.name;p['preferredChatId']=CHAT;server.save(p)
+        return self.payload()
+
+    def test_new_audit_chat_is_created_once_named_and_sent_exact_reviewed_text(self):
+        body=self.audit_payload();new_chat=str(uuid.uuid4());message=message_text(body)
+        with patch('desk_codex.threading.Thread') as worker:
+            receipt=self.service.send_audit(body)
+            self.assertEqual(receipt,self.service.send_audit(body))
+        self.assertEqual(worker.call_count,1);self.assertIsNone(receipt['threadId'])
+        native=self.client(message);original_call=native.call.side_effect
+        def call(method,params,**kwargs):
+            if method=='thread/start':
+                self.assertEqual(params,dict(cwd=str(Path(self.temp.name).resolve()),ephemeral=False))
+                return {'thread':{'id':new_chat}}
+            if method=='thread/name/set':
+                self.assertEqual(params,dict(threadId=new_chat,name='Audit'))
+                self.assertEqual(self.service.job(receipt['id'])['threadId'],new_chat)
+                return {}
+            self.assertEqual(params['threadId'],new_chat)
+            return original_call(method,params,**kwargs)
+        native.call.side_effect=call;native.read_thread.return_value=dict(id=new_chat,name='Audit',updatedAt=int(time.time()))
+        result=subprocess.CompletedProcess([],0,'Queued message '+str(uuid.uuid4())+' for thread '+new_chat+'.','')
+        with patch('desk_codex.Client',return_value=native),patch('desk_codex.executable',return_value='codex.exe'),patch('desk_codex.subprocess.run',return_value=result) as run,patch('desk_codex.local_open') as opened:
+            self.service._send_worker(receipt)
+        self.assertIn(new_chat,run.call_args.args[0]);self.assertIn(message,run.call_args.args[0]);opened.assert_called_once_with(new_chat)
+        self.assertEqual(self.service.job(receipt['id'])['status'],'received')
+        with patch('desk_codex.threading.Thread') as worker:self.service.send_audit(body)
+        worker.assert_not_called()
+        with patch('desk_codex.threading.Thread'):
+            with self.assertRaises(ValueError):self.service.send(dict(body,threadId=new_chat))
+
+    def test_audit_creation_failure_never_falls_back_to_preferred_chat(self):
+        body=self.audit_payload()
+        with patch('desk_codex.threading.Thread'):receipt=self.service.send_audit(body)
+        native=self.client();native.call.side_effect=ValueError('Creation unavailable')
+        with patch('desk_codex.Client',return_value=native),patch('desk_codex.subprocess.run') as run,patch('desk_codex.local_open') as opened:
+            self.service._send_worker(receipt)
+        run.assert_not_called();opened.assert_not_called();native.read_thread.assert_not_called()
+        self.assertEqual(self.service.job(receipt['id'])['status'],'failed')
+        self.service.control.tick(native)
+        self.assertEqual(self.service.project(self.project['id'])['workState']['phase'],'attention')
+        with patch('desk_codex.threading.Thread') as worker:self.service.send_audit(body)
+        worker.assert_not_called()
+
+    def test_audit_creation_wait_does_not_monitor_or_send_to_older_chat(self):
+        body=self.audit_payload()
+        with patch('desk_codex.threading.Thread'):self.service.send_audit(body)
+        native=self.client();self.service.control.tick(native);native.call.assert_not_called()
+        DeskCodex(server) # interrupted creation becomes unknown; never replayed
+        self.service.control.tick(native);native.call.assert_not_called()
+        self.assertEqual(self.service.project(self.project['id'])['workState']['phase'],'attention')
+
     def test_send_keeps_a_newer_unsent_draft(self):
         body=self.payload();message=message_text(body)
         with patch('desk_codex.threading.Thread'):receipt=self.service.send(body)

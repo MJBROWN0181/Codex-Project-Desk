@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory() as directory:
             expect(review.get_by_label('Next action',exact=True)).to_have_value('My unsent draft')
             expect(review.get_by_label('Why this step',exact=True)).to_have_value('Keep my explanation')
             expect(review.get_by_label('Additional instructions (optional)')).to_have_value('Preserve these added details')
-            selfield=review.get_by_label('Send to Codex chat');expect(selfield).to_have_value(CHAT)
+            selfield=review.get_by_label('Stored chat destination');expect(selfield).to_have_value(CHAT)
             assert len(calls)==1,'Restoring a draft must not regenerate over edits'
             review.get_by_role('button',name='Discard draft').click()
             expect(page.locator('#draft-status')).to_contain_text('Draft discarded')

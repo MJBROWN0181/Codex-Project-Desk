@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator('.next-action-link').click()
             review=page.locator('#action-review')
             expect(review.get_by_label('Next action',exact=True)).to_have_attribute('readonly','')
-            review.get_by_label('Send to Codex chat',exact=True).select_option('')
+            review.get_by_label('Stored chat destination',exact=True).evaluate("s=>{s.value='';s.dispatchEvent(new Event('change'))}")
             expect(review.get_by_label('Next action',exact=True)).not_to_have_attribute('readonly','')
             expect(page.locator('#send-action')).to_be_disabled()
             review.get_by_role('button',name='Cancel',exact=True).click()

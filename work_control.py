@@ -153,6 +153,15 @@ class WorkControl:
             try:
                 state=original.get('workState', {})
                 if state.get('phase')=='operation' or state.get('interruptedOperation'): continue
+                if state.get('kind')=='audit' and not state.get('threadId'):
+                    receipt=(self.store.metadata('codexMessages') or {}).get(state.get('requestId')) or {}
+                    if receipt.get('status') in ('failed','unknown'):
+                        with self.store.MUTATION_LOCK:
+                            p=self.project(original['id'])
+                            if p.get('workState',{}).get('requestId')==state.get('requestId'):
+                                p['workState'].update(phase='attention',detail=receipt.get('error') or 'Audit chat creation was interrupted. Check Codex before trying again.')
+                                self.store.save(p)
+                    continue
                 target=state.get('threadId') or original.get('preferredChatId')
                 if not target:continue
                 linked=next((c for c in original['chats'] if c['id']==target), None)
