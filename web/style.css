@@ -63,3 +63,5 @@ select option:checked{background-color:#245bc4;color:#fff}
 .recommendation-spinner{width:23px;height:23px;flex-shrink:0;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:recommendation-spin .9s linear infinite}
 @keyframes recommendation-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.recommendation-spinner{animation:none}}
+
+.activity-full{max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin-top:8px;padding:10px;background:color-mix(in srgb,var(--blue) 5%,transparent);border:1px solid var(--line);border-radius:5px}.activity-history{max-height:260px;overflow:auto;padding-right:8px}.activity-note{margin:7px 0}.activity .activity-preview{white-space:normal}

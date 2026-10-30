@@ -13,6 +13,9 @@ with tempfile.TemporaryDirectory() as directory:
     b=server.update({'name':'Beta project','kind':'Business'})
     a['chats']=[dict(id=CHAT,title='Saved draft destination',url='codex://threads/'+CHAT,at='2026-10-29T10:00:00Z')]
     a['latestReply']=dict(threadId=CHAT,title='Saved draft destination',text='Latest final reply <script>not executable</script>\n'+('Long reply. '*40),at='2026-10-29T11:00:00Z',turnId='fixture',checkedAt=server.now());server.save(a)
+    long_note='Detailed update <script>not executable</script> '+('Long activity text. '*400)
+    server.event(a,'2026-10-29T12:00:00Z',long_note,'Codex chat activity','long-activity-fixture')
+    a['chats'][0]['title']=long_note;a['latestReply']['title']=long_note;server.save(a)
     service=DeskCodex(server);server.CODEX_SERVICE=service
     service.native_chats=lambda:[dict(id=CHAT,title='Saved draft destination')]
     calls=[]
@@ -28,6 +31,15 @@ with tempfile.TemporaryDirectory() as directory:
             page.goto(root);page.wait_for_load_state('networkidle')
             alpha=page.locator('article').filter(has=page.get_by_role('heading',name='Alpha project',exact=True))
             expect(alpha.locator('.latest-reply')).to_contain_text('Latest final reply <script>not executable</script>')
+            assert alpha.locator('.activity').bounding_box()['height']<230,'Activity preview should stay compact'
+            assert len(alpha.locator('.activity-preview').first.inner_text())<=181
+            assert max(map(len,alpha.locator('.links a,.latest-reply>a').all_text_contents()))<=101
+            alpha.locator('.activity-note summary').first.click()
+            full=alpha.locator('.activity-full').first
+            expect(full).to_have_text(long_note)
+            assert full.bounding_box()['height']<=182,'Expanded activity must scroll within its panel'
+            assert full.evaluate('node=>node.scrollHeight>node.clientHeight')
+            alpha.locator('.activity-note summary').first.click()
             alpha.get_by_role('button',name='Pin project',exact=True).click()
             expect(alpha.get_by_role('button',name='Unpin project')).to_be_visible()
             page.locator('#focus-only').click();expect(page.locator('article.project')).to_have_count(1)
