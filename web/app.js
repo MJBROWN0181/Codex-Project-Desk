@@ -8,6 +8,33 @@ function deliveryLabel(receipt){
 let noticeTimer,projectLoadSequence=0;
 let focusOnly=false;
 try{focusOnly=localStorage.getItem('project-desk-focus')==='true';}catch{}
+let archivedView=false,archiveBackend=false,archivePending={};
+const archiveKey='project-desk-archive-pending';
+function readArchivePending(){
+  try{const saved=JSON.parse(localStorage.getItem(archiveKey) || '{}');return Object.fromEntries(Object.entries(saved).filter(([id,v])=>id && typeof v?.archived==='boolean' && Number.isFinite(v.at)));}catch{return {};}
+}
+archivePending=readArchivePending();
+function isArchived(p){return archivePending[p.id]?.archived ?? !!p.archived;}
+function storeArchivePending(value){localStorage.setItem(archiveKey,JSON.stringify(value));archivePending=value;}
+async function syncArchivePending(data){
+  if(!data.features?.projectArchive)return;
+  for(const [id,entry] of Object.entries(archivePending)){
+    const index=data.projects.findIndex(p=>p.id===id);if(index<0)continue;
+    try{
+      const p=data.projects[index];
+      if(!(p.archiveUpdatedAt && Date.parse(p.archiveUpdatedAt)>=entry.at))data.projects[index]=await request('/api/projects',{id,archived:entry.archived});
+      const pending=readArchivePending();
+      if(pending[id]?.at===entry.at){delete pending[id];storeArchivePending(pending);}
+    }catch{/* Keep the saved choice until a later refresh can synchronize it. */}
+  }
+}
+async function setProjectArchived(project,archived){
+  const pending=readArchivePending();pending[project.id]={archived,at:Date.now()};storeArchivePending(pending);
+  render();
+  if(archiveBackend)await load();
+  notice((archived?'Project archived. Files and chats are kept.':'Project restored to the desk.')+(archivePending[project.id]?' Saved in this browser; desk-wide sync is pending.':''));
+}
+window.addEventListener('storage',event=>{if(event.key===archiveKey){archivePending=readArchivePending();render();}});
 function notice(text) { $('#notice').textContent = text; clearTimeout(noticeTimer); noticeTimer = setTimeout(()=>$('#notice').textContent='',6500); }
 async function request(url, body) {
   const response = await fetch(url, body === undefined ? {cache:'no-store'} : {method:'POST',keepalive:url==='/api/drafts',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -16,6 +43,9 @@ async function request(url, body) {
 async function load() {
   const sequence=++projectLoadSequence;
   const data = await request('/api/projects');
+  if(sequence!==projectLoadSequence)return;
+  archiveBackend=!!data.features?.projectArchive;
+  await syncArchivePending(data);
   if(sequence!==projectLoadSequence)return;
   projects = data.projects; chatAssignments = data.chatAssignments || {};
   projectDeskRoot=data.appRoot || '';
@@ -27,14 +57,19 @@ async function load() {
 }
 function render() {
   const query = $('#search').value.toLowerCase();
-  let shown = projects.filter(p=>(!focusOnly || p.pinned) && (!$('#status').value || p.status===$('#status').value) && (!$('#kind').value || p.kind===$('#kind').value) && [p.name,p.agency,p.nextAction,p.blocker,p.suggestion?.text].join(' ').toLowerCase().includes(query));
+  const pool=projects.filter(p=>isArchived(p)===archivedView);
+  let shown = pool.filter(p=>(archivedView || !focusOnly || p.pinned) && (!$('#status').value || p.status===$('#status').value) && (!$('#kind').value || p.kind===$('#kind').value) && [p.name,p.agency,p.nextAction,p.blocker,p.suggestion?.text].join(' ').toLowerCase().includes(query));
   shown.sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned) || ($('#sort').value==='name' ? a.name.localeCompare(b.name) : (b.activity[0]?.at || '').localeCompare(a.activity[0]?.at || '') || a.name.localeCompare(b.name)));
   $('#focus-only').setAttribute('aria-pressed',String(focusOnly));$('#focus-only').textContent=focusOnly?'Show all projects':'Focus list';
-  $('#count').textContent = `${shown.length} of ${projects.length}`;
+  $('#focus-only').disabled=archivedView;
+  $('#archive-view').textContent=archivedView?'Back to desk':`Archived (${projects.filter(isArchived).length})`;
+  $('#archive-view').setAttribute('aria-pressed',String(archivedView));
+  $('#project-view-title').textContent=archivedView?'Archived projects':'Your projects';
+  $('#count').textContent = `${shown.length} of ${pool.length}`;
   $('#projects').innerHTML = shown.map(p=>{
     const e=escapeHtml, working=workBusy(p), s=working?null:p.suggestion;
-    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><div class="card-controls"><span class="badge ${e(p.status)}">${e(p.status)}</span><button class="pin-project" data-action="pin" aria-pressed="${!!p.pinned}" aria-label="${p.pinned?'Unpin project':'Pin project'}">${p.pinned?'Pinned':'Pin'}</button></div></div><div class="card-body">${workMarkup(p)}<div class="next" ${working?'hidden':''}><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Mark done manually</button><small class="manual-done-help">Use this for work you finish yourself. Work sent to Codex updates automatically when its chat finishes.</small>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}${activityMarkup(p)}${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}${replyMarkup(p)}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(compactText(c.title,100))}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer">${p.status==='Unreviewed' && !working?'<button data-action="reviewed">Mark reviewed</button>':''}${p.actionDraft && !working?'<button data-action="review">Resume draft</button>':''}${!working?'<button data-action="edit">Edit project</button><button data-action="log">Log activity</button>':''}${p.chats.length && !working?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
-  }).join('') || `<p class="no-results">${focusOnly?'No pinned projects match. Show all projects to pin one, or adjust your filters.':'No projects match. Change your filters or add a project.'}</p>`;
+    return `<article class="project" data-id="${e(p.id)}"><div class="card-top"><div><h3>${e(p.name)}</h3><span class="kind">${e(p.kind)}${p.kind==='Documents Render' && p.agency?' — '+e(p.agency):''}</span></div><div class="card-controls"><span class="badge ${e(p.status)}">${e(p.status)}</span><div class="card-organize"><button class="pin-project" data-action="pin" aria-pressed="${!!p.pinned}" aria-label="${p.pinned?'Unpin project':'Pin project'}">${p.pinned?'Pinned':'Pin'}</button><button class="archive-project" data-action="${isArchived(p)?'restore':'archive'}" title="${isArchived(p)?'Show this project on the desk again':'Hide from the desk; keep the project, files, and chats'}">${isArchived(p)?'Restore project':'Archive project'}</button></div></div></div><div class="card-body">${workMarkup(p)}<div class="next" ${working?'hidden':''}><h4>Your next action</h4><p class="${p.nextAction?'':'empty'}"><button type="button" class="next-action-link" data-action="review">${e(p.nextAction || 'Choose your next step')}</button></p>${p.nextAction?'<button class="done-action" data-action="complete">Mark done manually</button><small class="manual-done-help">Use this for work you finish yourself. Work sent to Codex updates automatically when its chat finishes.</small>':''}</div>${p.blocker?`<p class="blocker"><strong>Blocked by:</strong> ${e(p.blocker)}</p>`:''}${s?`<div class="suggestion"><h4>Suggested next action</h4><p>${e(s.text)}</p><small>${e(s.reason)}</small><small>${e(s.source)}${s.at?' · '+e(dateText(s.at)):''}</small><div class="buttons"><button data-action="review">Review and send</button><button data-action="accept">Accept</button><button class="quiet" data-action="change">Change</button><button class="quiet" data-action="dismiss">Dismiss</button></div></div>`:''}${activityMarkup(p)}${p.completedActions?.length?`<details class="completed-history"><summary>Completed actions (${p.completedActions.length})</summary><ol>${p.completedActions.map(item=>`<li><strong>${e(item.action)}</strong><small>${e(dateText(item.at))}</small>${item.note?`<p>${e(item.note)}</p>`:''}</li>`).join('')}</ol></details>`:''}${replyMarkup(p)}<div class="links">${p.repo?`<a href="https://github.com/${e(p.repo)}" target="_blank" rel="noopener noreferrer">GitHub repository</a>`:''}${p.chats.slice(0,2).map(c=>c.connectionStatus==='unavailable'?`<span class="connection-unavailable">Unavailable chat: ${e(c.title)}</span>`:`<a href="${e(c.url)}" title="Open in Codex">${e(compactText(c.title,100))}${c.hostId && c.hostId!=='local'?' <span class="chat-link-cloud">(cloud)</span>':''}</a>`).join('')}</div></div><footer class="card-footer">${p.status==='Unreviewed' && !working?'<button data-action="reviewed">Mark reviewed</button>':''}${p.actionDraft && !working?'<button data-action="review">Resume draft</button>':''}${!working?'<button data-action="edit">Edit project</button><button data-action="log">Log activity</button>':''}${p.chats.length && !working?'<button data-action="move">Move chat</button>':''}${p.chats.some(c=>chatAssignments[c.id]?.nativeStatus==='pending')?'<button data-action="pending">Finish Codex move</button>':''}${p.repo?'<button data-action="github">Refresh GitHub</button>':''}${Object.values(codexMessages).some(r=>r.projectId===p.id)?`<button class="delivery-receipt" data-action="receipt">${e(deliveryLabel(Object.values(codexMessages).filter(r=>r.projectId===p.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]))}</button>`:''}${p.githubCheckedAt?`<span class="source-label">GitHub checked ${e(dateText(p.githubCheckedAt))}</span>`:''}</footer></article>`;
+  }).join('') || `<p class="no-results">${archivedView?'No archived projects match. Archived projects are kept here and can be restored.':focusOnly?'No pinned projects match. Show all projects to pin one, or adjust your filters.':'No projects match. Change your filters or add a project.'}</p>`;
 }
 function compactText(value,limit=180){
   const text=String(value ?? '').replace(/\s+/g,' ').trim();
@@ -55,6 +90,7 @@ function replyMarkup(p){
   return `<section class="latest-reply"><h4>Latest Codex reply</h4><p class="reply-preview">${e(compactText(r.text,280))}</p>${r.text.length>280?`<details><summary>Read full reply</summary><p class="reply-full">${e(r.text)}</p>${r.truncated?'<p class="hint">Open the chat for the complete reply.</p>':''}</details>`:''}<a href="codex://threads/${e(r.threadId)}">${e(compactText(r.title,100))}</a><small>${e(dateText(r.at))}</small>${p.replyCheckError?`<p class="hint">${e(p.replyCheckError)}</p>`:''}</section>`;
 }
 $('#focus-only').onclick=()=>{focusOnly=!focusOnly;try{localStorage.setItem('project-desk-focus',String(focusOnly));}catch{}render();};
+$('#archive-view').onclick=()=>{archivedView=!archivedView;render();};
 function openEditor(project, suggestion=false) {
   editing = project?.id || null;
   const form=$('#project-form'); form.reset(); $('#editor-title').textContent=project?'Edit project':'Add project';
@@ -118,6 +154,9 @@ $('#projects').onclick=async event=>{
   const button=event.target.closest('button[data-action]'); if(!button) return;
   const p=projects.find(p=>p.id===button.closest('article').dataset.id), action=button.dataset.action;
   if(await handleWorkAction(p,action))return;
+  if(action==='archive' || action==='restore'){
+    button.disabled=true;try{await setProjectArchived(p,action==='archive');}catch(error){notice(error.message);}finally{button.disabled=false;}return;
+  }
   if(action==='pin'){
     button.disabled=true;try{await request('/api/projects',{id:p.id,pinned:!p.pinned});await load();}catch(error){notice(error.message);}finally{button.disabled=false;}return;
   }

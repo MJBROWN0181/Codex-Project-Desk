@@ -276,7 +276,7 @@ def update(payload):
     if not p:
         raise ValueError('Project was not found.')
     from work_control import busy
-    if busy(p) and set(payload)-{'id','pinned'}:
+    if busy(p) and set(payload)-{'id','pinned','archived'}:
         raise ValueError('This project is working. Add content to its queue instead of changing project details.')
     previous_action=p.get('nextAction','')
     previous_site=p.get('websiteUrl','')
@@ -284,6 +284,11 @@ def update(payload):
     if 'pinned' in payload:
         if not isinstance(payload['pinned'],bool):raise ValueError('Pinned must be true or false.')
         p['pinned']=payload['pinned']
+    if 'archived' in payload:
+        if not isinstance(payload['archived'],bool):raise ValueError('Archived must be true or false.')
+        if bool(p.get('archived'))!=payload['archived']:
+            p['archived']=payload['archived'];p['archiveUpdatedAt']=now()
+            p['archivedAt']=p['archiveUpdatedAt'] if p['archived'] else None
     for key in ('name','kind','status','nextAction','blocker','repo','agency','path','websiteUrl'):
         if key in payload:
             if not isinstance(payload[key], str) or len(payload[key]) > 3000:
@@ -445,7 +450,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response({'error':'Invalid host'}, 403)
         route = urlparse(self.path).path
         if route == '/api/projects':
-            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), codex=metadata('codex'),
+            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), features=dict(projectArchive=True), codex=metadata('codex'),
                                            chatAssignments=metadata('chatAssignments') or {},
                                            codexConnections=metadata('codexConnections'),codexMessages=metadata('codexMessages') or {}))
         if route.startswith('/api/codex/jobs/'):

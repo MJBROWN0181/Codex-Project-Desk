@@ -7,7 +7,7 @@
 <p id="source" class="source"></p>
 <div class="connection-bar"><p id="connection-summary">Chat connections are checked automatically when Project Desk starts.</p><button id="check-connections" type="button" class="quiet">Check chat connections</button></div>
 <div class="toolbar"><label class="search">Find a project<input id="search" type="search" placeholder="Search projects, actions, or blockers"></label><label>Status<select id="status"><option value="">All statuses</option><option>Unreviewed</option><option>Active</option><option>Waiting</option><option>Paused</option><option>Complete</option></select></label><label>Type<select id="kind"><option value="">All projects</option><option>Software</option><option>Business</option><option>Mixed</option><option>Website</option><option>App</option><option>Documents Render</option></select></label><label>Sort<select id="sort"><option value="recent">Last worked on</option><option value="name">Project name</option></select></label></div>
-<div class="list-heading"><h2>Your projects <span id="count"></span></h2><button id="focus-only" type="button" class="quiet" aria-pressed="false">Focus list</button><p>Suggestions stay separate until you accept them.</p></div>
+<div class="list-heading"><h2><span id="project-view-title">Your projects</span> <span id="count"></span></h2><div class="project-view-controls"><button id="archive-view" type="button" class="quiet" aria-pressed="false">Archived (0)</button><button id="focus-only" type="button" class="quiet" aria-pressed="false">Focus list</button></div><p>Suggestions stay separate until you accept them.</p></div>
 <section id="projects" class="projects" aria-label="Projects"></section>
 </main>
 <div id="notice" role="status" aria-live="polite"></div>

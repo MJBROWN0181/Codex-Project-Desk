@@ -20,6 +20,14 @@ Website projects can have a configured HTTP(S) URL. If it is empty, Check site d
 
 ## Drafts, focus, and latest replies
 
+Archive project beside Pin hides a project from the main desk without deleting
+its files, chats, saved drafts, history, or project record. It does not archive
+the native Codex project or stop running work. Open Archived above the cards and
+choose Restore project to show it again. Archives persist across imports and
+server restarts; pins and project status are retained. While a server upgrade
+waits for active reviews to finish, visibility choices are saved in the current
+browser and synchronized automatically when the updated server is available.
+
 Review fields autosave as an unsent project draft, including the selected chat, step, reason, and extra instructions. Drafts use revision checks to prevent an older window overwriting a newer save, plus a browser-local recovery copy. Closing or reloading preserves edits. Restoring a draft does not generate over it or send it. Discard draft clears only the draft. Successful queue acknowledgement clears a matching submitted draft; newer edits are retained, and failed sends retain the draft.
 
 Pin projects from their cards to keep them first. Focus list shows pinned projects using the current filters and sort; Show all projects returns to the full list. Pins are stored with project data, and the selected view is remembered in the browser.
