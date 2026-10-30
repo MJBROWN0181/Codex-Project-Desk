@@ -47,3 +47,13 @@
 .card-controls{display:flex;flex-direction:column;align-items:flex-end;gap:9px}.pin-project{font-size:12px;padding:5px 10px;background:transparent;color:var(--blue);border-color:var(--line)}.pin-project[aria-pressed="true"]{background:#e3efff;color:#245297}.latest-reply{border-top:1px solid var(--line);padding-top:14px;margin:16px 0}.latest-reply h4{font-size:12px;margin:0 0 8px}.latest-reply p{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}.latest-reply a{display:block;margin-top:10px;color:var(--blue);font-size:12px;overflow-wrap:anywhere}.latest-reply small{display:block;margin-top:4px;color:var(--muted);font-size:11px}.reply-preview{margin:0 0 7px}.reply-full{max-height:300px;overflow:auto}#focus-only{font-size:12px;white-space:nowrap}#focus-only[aria-pressed="true"]{border-color:var(--blue)}#draft-status{min-height:18px}#discard-draft{justify-self:start;font-size:12px;padding:6px 10px}[data-theme="dark"] .pin-project{background:transparent;color:var(--blue);border-color:var(--line)}[data-theme="dark"] .pin-project[aria-pressed="true"]{background:#263f61;color:#c0d9ff}
 
 .manual-done-help{display:block;font-size:12px;line-height:1.5;color:var(--muted);margin-top:7px}
+
+/* Native dropdown rows need their own colors; styling only the closed select
+   can leave light text on a light popup in Windows browsers. */
+select{color-scheme:light}
+select option,select optgroup{background-color:#fff;color:#183248}
+select option:checked{background-color:#245bc4;color:#fff}
+[data-theme="dark"] select{color-scheme:dark}
+[data-theme="dark"] select option,[data-theme="dark"] select optgroup{background-color:#122131;color:#e2eaf3}
+[data-theme="dark"] select option:checked{background-color:#315fb3;color:#fff}
+@media(forced-colors:active){select option,select optgroup,[data-theme="dark"] select option,[data-theme="dark"] select optgroup{background-color:Canvas;color:CanvasText}select option:checked,[data-theme="dark"] select option:checked{background-color:Highlight;color:HighlightText}}

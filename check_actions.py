@@ -38,6 +38,29 @@ with tempfile.TemporaryDirectory() as directory:
             expect(review).to_be_visible()
             expect(page.locator('#action-status')).to_contain_text('Agent recommendation ready',timeout=210000)
             Path('output').mkdir(exist_ok=True)
+            # Exercise the actual review selector's rows in both themes, including
+            # unselected options, without sending any message or changing a target.
+            selector=review.get_by_label('Send to Codex chat',exact=True)
+            for theme in ('light','dark'):
+                page.evaluate('(theme)=>document.documentElement.dataset.theme=theme',theme)
+                colors=selector.evaluate('''select=>Array.from(select.options,option=>{
+                  const css=getComputedStyle(option);
+                  return {color:css.color,background:css.backgroundColor};
+                })''')
+                def luminance(css):
+                    import re
+                    channels=[int(n)/255 for n in re.findall(r'\d+',css)[:3]]
+                    linear=[n/12.92 if n<=.04045 else ((n+.055)/1.055)**2.4 for n in channels]
+                    return sum(n*w for n,w in zip(linear,[.2126,.7152,.0722]))
+                for pair in colors:
+                    assert pair['background']!='rgba(0, 0, 0, 0)',pair
+                    light,dark=sorted([luminance(pair['color']),luminance(pair['background'])],reverse=True)
+                    assert (light+.05)/(dark+.05)>=4.5,(theme,pair)
+                # Listbox rendering exposes option rows in a browser screenshot;
+                # native operating-system popups may be painted outside the page.
+                selector.evaluate('select=>select.size=4')
+                page.screenshot(path=f'output/chat-options-{theme}.png')
+                selector.evaluate('select=>select.removeAttribute("size")')
             page.screenshot(path='output/review-next-action.png')
             expect(review.get_by_label('Next action',exact=True)).not_to_be_empty()
             expect(review.get_by_label('Why this step',exact=True)).not_to_be_empty()
