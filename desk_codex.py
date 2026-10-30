@@ -134,6 +134,7 @@ class DeskCodex:
         with self.replies_lock:return self._refresh_replies()
 
     def _refresh_replies(self):
+        if not self.store.load_projects():return dict(refreshed=0,unavailable=[])
         refreshed=0;failures=[]
         with Client() as client:
             for original in self.store.load_projects():

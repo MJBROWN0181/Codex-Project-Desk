@@ -58,6 +58,7 @@ async function load() {
   $('#source').textContent = `Project index: ${sources || 'No saved index imported yet.'} Local chat replies and work completion are checked automatically while Project Desk runs.`;
   if(data.codexConnections)$('#connection-summary').textContent=`Chat connections: ${data.codexConnections.verified} verified locally, ${data.codexConnections.cloud || 0} cloud references, ${data.codexConnections.unavailable.length} need attention. Checked ${dateText(data.codexConnections.checkedAt)}.`;
   render();
+  if(data.setup?.required && !document.querySelector('dialog[open]'))openSetup(data.setup);
 }
 function render() {
   const query = $('#search').value.toLowerCase();

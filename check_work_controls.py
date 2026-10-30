@@ -11,7 +11,7 @@ from test_codex_actions import CHAT
 
 with tempfile.TemporaryDirectory() as directory:
     server.DB=Path(directory)/'browser.sqlite3';server.DATA=Path(directory);server.initialize()
-    a=server.update(dict(name='Control test',kind='Website',nextAction='Build next feature',repo='MJBROWN0181/Codex-Project-Desk',path=str(server.ROOT),websiteUrl='https://example.com'))
+    a=server.update(dict(name='Control test',kind='Website',nextAction='Build next feature',repo='example/project',path=str(server.ROOT),websiteUrl='https://example.com'))
     a.update(preferredChatId=CHAT,chats=[dict(id=CHAT,title='Fixture chat',url='codex://threads/'+CHAT,at=server.now())],workState=dict(phase='working',threadId=CHAT,turnId='fixture-turn',detail='Codex is working.'),suggestion=dict(text='Must be hidden'))
     server.save(a);service=DeskCodex(server);server.CODEX_SERVICE=service
     http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler)

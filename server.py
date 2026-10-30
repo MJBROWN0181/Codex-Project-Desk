@@ -23,7 +23,7 @@ DATA = Path(os.environ.get('PROJECT_TRACKER_DATA', str(ROOT / 'data')))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'tracker.sqlite3'
 INDEX = Path.home() / 'Desktop/Projects/CMChats/workspace-index.json'
-EXPORT = ROOT / 'data/codex-export.json'
+EXPORT = DATA / 'codex-export.json'
 STATUSES = ('Unreviewed', 'Active', 'Waiting', 'Paused', 'Complete')
 KINDS = ('Software', 'Business', 'Mixed', 'Website', 'App', 'Documents Render')
 MUTATION_LOCK = threading.RLock()
@@ -104,6 +104,18 @@ def initialize():
     with connect() as db:
         db.execute('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, document TEXT NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+
+def setup_state():
+    # Existing installations need no onboarding and keep all their saved work.
+    return dict(required=not load_projects() and not metadata('setupComplete'),
+                pythonReady=True, codexReady=bool(shutil.which('codex')),
+                githubReady=bool(shutil.which('gh')))
+
+def prepare_startup():
+    initialize()
+    reconcile_review_statuses()
+    apply_project_path_overrides()
+    # Imports are explicit: a clean checkout must never seed itself from this PC.
 
 def load_projects():
     with connect() as db:
@@ -453,7 +465,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response({'error':'Invalid host'}, 403)
         route = urlparse(self.path).path
         if route == '/api/projects':
-            return self.json_response(dict(projects=load_projects(), appRoot=str(ROOT), features=dict(projectArchive=True,projectRegister=True), codex=metadata('codex'),
+            return self.json_response(dict(projects=load_projects(), setup=setup_state(), appRoot=str(ROOT), features=dict(projectArchive=True,projectRegister=True), codex=metadata('codex'),
                                            chatAssignments=metadata('chatAssignments') or {},
                                            codexConnections=metadata('codexConnections'),codexMessages=metadata('codexMessages') or {}))
         if route.startswith('/api/codex/jobs/'):
@@ -468,7 +480,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_response(dict(draft=p.get('actionDraft'),revision=p.get('draftRevision',0)))
         files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
                  '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/theme.js': ('theme.js','text/javascript'),
-                 '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript'),
+                 '/setup.js': ('setup.js','text/javascript'), '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript'),
                  '/control.js':('control.js','text/javascript'),'/control.css':('control.css','text/css')}
         if route not in files:
             return self.json_response({'error':'Not found'}, 404)
@@ -491,7 +503,10 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('Expected an object.')
-            if self.path == '/api/projects':
+            if self.path == '/api/setup':
+                metadata('setupComplete',dict(at=now()))
+                result=setup_state()
+            elif self.path == '/api/projects':
                 result = update(body)
             elif self.path == '/api/project/register':
                 from desk_register import register
@@ -531,13 +546,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8789)
     args = parser.parse_args()
-    initialize()
-    reconcile_review_statuses()
-    apply_project_path_overrides()
-    if not metadata('codex') and (EXPORT.exists() or INDEX.exists()):
-        sync_codex()
+    prepare_startup()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
-    service=codex_service();service.start_job(service.audit)
+    service=codex_service()
+    if load_projects():service.start_job(service.audit)
     threading.Thread(target=service.watch_receipts,daemon=True).start()
     threading.Thread(target=service.control.watch,daemon=True).start()
     print(f'Project tracker: http://127.0.0.1:{args.port}', flush=True)

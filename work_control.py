@@ -140,6 +140,7 @@ class WorkControl:
                 p['workPaused']=True; self.store.save(p)
 
     def tick(self, client=None, scan_idle=False):
+        if not self.store.load_projects():return
         if not self.tick_lock.acquire(blocking=False): return
         try:
             if client is None:

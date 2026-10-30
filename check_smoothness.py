@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright,expect
 import server
 from desk_codex import DeskCodex
 
-CHAT='01a1878b-d3f8-79d2-9268-a93a2b1de9b1'
+CHAT='00000000-0000-4000-8000-000000000001'
 with tempfile.TemporaryDirectory() as directory:
     server.DB=Path(directory)/'smooth.sqlite3';server.initialize()
     p=server.update({'name':'Workflow alpha','kind':'App','nextAction':'Review milestone'})

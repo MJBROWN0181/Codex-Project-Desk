@@ -1,4 +1,4 @@
-"""Behavior checks use a temporary database, never Michael's saved project data."""
+"""Behavior checks use a temporary database, never real project data."""
 import json
 from pathlib import Path
 import tempfile

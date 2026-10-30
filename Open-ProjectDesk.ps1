@@ -30,7 +30,7 @@ try {
             $projectDeskActivated = $projectDeskShell.AppActivate('Project Desk')
         }
         if (-not $projectDeskActivated) {
-            # This is the visible app window requested by Michael, not a background helper.
+            # This is the visible app window requested by the user, not a background helper.
             Start-Process -FilePath $projectDeskBrowser -ArgumentList $projectDeskWindowArgs
         }
     }

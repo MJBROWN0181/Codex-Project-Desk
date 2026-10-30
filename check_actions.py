@@ -1,5 +1,6 @@
 """Browser review/send checks with an isolated database; --live uses the existing echo-test chat."""
 import argparse
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -10,7 +11,8 @@ import server
 from desk_codex import DeskCodex
 
 parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true');args=parser.parse_args()
-chat='01a1878b-d3f8-79d2-9268-a93a2b1de9b1'
+chat=os.environ.get('PROJECT_DESK_TEST_CHAT','00000000-0000-4000-8000-000000000001')
+if args.live and 'PROJECT_DESK_TEST_CHAT' not in os.environ:parser.error('--live requires PROJECT_DESK_TEST_CHAT set to an authorized test chat UUID')
 message='Project Desk review/send integration test. Reply exactly PROJECT_DESK_REVIEW_SEND_OK. Do not use tools, edit files, contact anyone, or resume previous work.'
 with tempfile.TemporaryDirectory() as directory:
     server.DB=Path(directory)/'actions.sqlite3';server.initialize()

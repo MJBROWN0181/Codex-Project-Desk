@@ -4,3 +4,15 @@ output/
 .venv/
 .env
 .env.*
+# Private databases, exports, profiles and local backups must never ship.
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+*.bak
+codex-export.json
+workspace-index.json
+window-profile/
+backups/

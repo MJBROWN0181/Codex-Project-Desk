@@ -38,7 +38,7 @@ Website projects can have a configured HTTP(S) URL. If it is empty, Check site d
 
 ## Drafts, focus, and latest replies
 
-Michael's installed `spd` (Send to Project Desk) skill registers the current
+An optional installed `spd` (Send to Project Desk) skill registers the current
 project and verified local Codex chat automatically. Type `spd` or `$spd` in that
 chat, then refresh Project Desk. It reuses matching cards, fills missing known
 details, restores an archived card, and preserves saved work and drafts. It does
@@ -66,22 +66,35 @@ Refresh beside the title updates saved project data without resetting the curren
 
 ## Run locally
 
-Michael's canonical local checkout is `C:\Users\Mjbro\Desktop\Projects\Codex Project Desk`.
-Desktop shortcuts and launchers point to this folder. The local ignored
-`data/location.json` records compatibility paths for existing jobs and the browser
-profile. The data junction keeps one authoritative database while existing work
-finishes. Keep the old compatibility folder until its recorded dependencies have
-been migrated; do not create a second independent live database.
+Download or clone this repository into a folder of your choice. It contains the
+Project Desk application and synthetic test fixtures, with no saved projects,
+chat exports, account credentials, or browser profiles.
 
-Python 3.10 or newer is required. Run `python server.py`, then open http://127.0.0.1:8789. The application uses Python's standard library and starts with an empty project list when no local Codex export is available. GitHub refresh additionally uses the already-signed-in `gh` CLI.
+1. Install Python 3.10 or newer.
+2. Open a terminal in the downloaded folder and run `python server.py`.
+3. Open http://127.0.0.1:8789. The first-run wizard checks optional tools and
+   explains how to add your first project. Choose **Start with an empty desk**
+   or **Add my first project**. No sample projects or local indexes are imported.
+4. On Windows, `Open-ProjectDesk.ps1` opens a standalone window. Optionally run
+   `Install-DesktopShortcuts.ps1` to create the desktop icon and a combined Codex
+   launcher. Shortcut changes happen only when you run that installer.
 
-Personal state in `data/` is excluded from Git: project records, chat exports, shortcut backups, logs, and the standalone browser profile stay on this computer.
+The wizard is available again through **Getting started** in the header. Python
+is the only requirement for manual tracking. Codex features additionally need
+an installed, signed-in Codex CLI; GitHub features need Git and a signed-in
+GitHub CLI (`gh`). The wizard checks tool availability, not account sign-in.
+
+Add projects manually with **Add project**. **Refresh Codex index** explicitly
+imports this computer's saved metadata, if available; ordinary startup never
+imports it. Personal runtime state stays in the Git-ignored `data/` folder.
+Do not upload that folder when sharing the app. `PROJECT_TRACKER_DATA` can point
+to another local data directory; exports are read from that directory too.
 
 ## Checks
 
-Run `python -m unittest -v test_tracker.py` for isolated data tests. For browser checks and icon generation, install `requirements-dev.txt` and Chromium with `python -m playwright install chromium`, then run `python check_browser.py` or `python create_icon.py` as needed.
+Run `python -m unittest discover -q` for the full isolated test suite. Run `python check_setup.py` for the first-run wizard, empty desk, and add-project browser checks. For browser checks and icon generation, install `requirements-dev.txt` and Chromium with `python -m playwright install chromium`, then run `python check_browser.py` or `python create_icon.py` as needed.
 
-Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to this installation's existing integration-test chat; it must not be run against an unrelated account or without permission to message that chat.
+Run `python -m unittest -v test_tracker.py test_codex_actions.py` for all data and delivery tests. `python check_actions.py` checks the review/send UI using a mock transport and a temporary database. `python check_actions.py --live` is an explicit, optional live test that sends a harmless echo request to a test chat explicitly supplied through `PROJECT_DESK_TEST_CHAT`; it must not be run against an unrelated account or without permission to message that chat.
 
 `python check_smoothness.py` covers header refresh, retained filters/theme, out-of-order responses, changing a chat target during recommendation generation, receipt-dialog races, and responsive layouts. It uses temporary data and does not send messages.
 
