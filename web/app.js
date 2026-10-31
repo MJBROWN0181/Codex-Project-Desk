@@ -280,7 +280,7 @@ $('#projects').onclick=async event=>{
 };
 $('#project-form').onsubmit=async event=>{
   event.preventDefault(); const form=event.target, button=form.querySelector('[type=submit]'); button.disabled=true;
-  try { const payload=Object.fromEntries(new FormData(form)); if(editing) payload.id=editing;
+  try { const payload=Object.fromEntries(new FormData(form)); if(editing) payload.id=editing; else payload.createFolders=true;
     await request('/api/projects',payload); $('#editor').close(); await load(); notice('Project saved.');
   } catch(error) { notice(error.message); } finally { button.disabled=false; }
 };

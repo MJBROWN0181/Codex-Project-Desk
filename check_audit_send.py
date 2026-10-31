@@ -76,9 +76,21 @@ with tempfile.TemporaryDirectory() as directory:
             # Clean reports have no placeholder sends. Oversized recommendations
             # remain in the saved report and are referenced rather than truncated.
             clean=service.project(p['id']);clean['auditReport']=dict(id=str(uuid.uuid4()),grade='A',summary='No required fixes.',fixPrompt='',findings=[],checks=[],limitations=[]);server.save(clean);page.evaluate('load()')
+            clean['auditReport'].update(
+                findings=[dict(title='Optional extra coverage',severity='medium',required=False,evidence='Existing required tests pass.',recommendation='Consider later.')],
+                checks=[dict(name='Current unit tests',result='passed',purpose='required',evidence='3 tests passed.'),
+                        dict(name='Previous missing Python',result='failed',purpose='historical',evidence='Resolved by the current passing tests.'),
+                        dict(name='Unused py launcher',result='failed',purpose='optional',evidence='python.exe works.')],
+                limitations=['No UI is required for this local library.'],readinessLimitations=[])
+            server.save(clean);page.evaluate('load()')
             page.get_by_role('button',name='Audit report',exact=False).click()
             expect(report.get_by_role('button',name='Send to Codex',exact=True)).to_be_disabled()
             expect(report.get_by_role('button',name='Copy fix prompt',exact=True)).to_be_disabled()
+            expect(report.locator('.audit-grade')).to_have_text('Grade A')
+            expect(report.locator('.audit-highlight.urgent')).to_have_count(0)
+            expect(report.locator('.audit-highlight.caution')).to_have_count(0)
+            expect(report.locator('.audit-findings').filter(has_text='Check results:')).to_contain_text('historical / failed')
+            expect(report.locator('.audit-findings').filter(has_text='All findings')).to_contain_text('Optional: Optional extra coverage')
             report.get_by_role('button',name='Close report',exact=True).click()
             clean['auditReport']['fixPrompt']='Detailed recommended repair. '*500;server.save(clean);page.evaluate('load()')
             page.get_by_role('button',name='Audit report',exact=False).click();report.get_by_role('button',name='Send to Codex',exact=True).click()

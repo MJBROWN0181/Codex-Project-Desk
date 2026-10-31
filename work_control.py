@@ -67,6 +67,8 @@ class WorkControl:
                 p.pop('pauseReason',None)
                 if p['status'] == 'Paused': p['status'] = 'Active'
             elif action == 'wrap':
+                if (p.get('workState', {}).get('threadId') or p.get('preferredChatId')) in p.get('closedRecordChats', []):
+                    raise ValueError('This chat is already wrapped up. Start new work in Project folders.')
                 if not (p.get('workState', {}).get('threadId') or p.get('preferredChatId')):
                     raise ValueError('Choose a local chat by sending a reviewed next action first.')
                 p['wrapRequested'] = True
@@ -92,13 +94,20 @@ class WorkControl:
                     # Network check runs outside the mutation lock below.
                 else:
                     from project_ops import ProjectOps
+                    if action=='release':
+                        from worktree_workflow import guard_release
+                        guard_release(p,ProjectOps(self.store).folder(p))
                     audit_folders=None
                     if action in ('assess','finish-team','advisors'):
                         from audit_scope import choose
                         audit_folders=choose(self.store,p,body.get('auditFolders'))
                     if action!='advisors':ProjectOps(self.store).folder(p)
                     p['workState'] = dict(phase='operation', operation=action, id=str(uuid.uuid4()), startedAt=self.store.now(), detail='Starting '+action)
-                    if audit_folders is not None:p['workState']['auditFolders']=audit_folders
+                    if audit_folders is not None:
+                        p['workState']['auditFolders']=audit_folders
+                        if action in ('assess','finish-team'):
+                            from worktree_workflow import audit_is_read_only
+                            p['workState']['readOnlyScope']=audit_is_read_only(p,audit_folders)
                     p['suggestion'] = None
                     self.store.mark_reviewed(p)
             else: raise ValueError('Unknown project control.')
@@ -137,7 +146,7 @@ class WorkControl:
                 from audit_scope import run_scoped
                 folders=p['workState'].get('auditFolders')
                 if folders is None and verifying:folders=(p.get('auditReport') or {}).get('auditedFolders',[])
-                result=run_scoped(p,folders or [],action,lambda scoped:AuditEngine(self.store).run(scoped,team=action=='finish-team',progress=progress,**({'verify_only':True} if verifying else {})))
+                result=run_scoped(p,folders or [],action,lambda scoped:AuditEngine(self.store).run(scoped,team=action=='finish-team',progress=progress,**({'verify_only':True} if verifying or p['workState'].get('readOnlyScope') else {})))
             with self.store.MUTATION_LOCK:
                 p = self.project(identity)
                 if p.get('workState',{}).get('id')!=operation_id:return
@@ -157,6 +166,10 @@ class WorkControl:
                         raise ValueError('Verification grading did not complete. Its evidence was saved; the previous audit grade is retained.')
                     current.update(status='completed',completedAt=self.store.now(),resultReportId=result.get('id'),newGrade=result.get('grade'),detail='One verification audit completed. Review the updated grade and remaining issues; no further fixes or audits start automatically.')
                     p.setdefault('auditHistory',[]).append(dict(reportId=follow_up['sourceReportKey'],grade=follow_up.get('previousGrade'),completedAt=source.get('completedAt'),mode=source.get('mode')))
+                if p.get('recordsRoot'):result['recordsFeature']=p.get('activeFeature','')
+                if p.get('workState',{}).get('readOnlyScope'):
+                    result['readOnlyScope']=True
+                    result['summary']='Read-only trunk/work review; no repair pass was run. '+result.get('summary','')
                 p['releaseState' if action == 'release' else 'advisorReport' if action=='advisors' else 'auditReport'] = result
                 if action != 'release':
                     directory = self.store.DATA / 'reports'; directory.mkdir(parents=True, exist_ok=True)
@@ -299,6 +312,10 @@ class WorkControl:
         messages=[item_text(i) for i in turn.get('items',[]) if i.get('type')=='agentMessage' and (i.get('phase')=='final_answer' or not i.get('phase'))]
         if messages:
             p['latestReply']=dict(threadId=state['threadId'],title=next((c['title'] for c in p['chats'] if c['id']==state['threadId']),'Codex chat'),text=messages[-1][:20000],at=self.store.utc_stamp(turn.get('completedAt') or stamp),turnId=turn['id'],checkedAt=stamp)
+        if p.get('recordsRoot'):
+            from project_folders import record_turn
+            receipt=(self.store.metadata('codexMessages') or {}).get(state.get('requestId'))
+            record_turn(p,state,turn,receipt)
         if outcome=='completed':
             self._clear_failure_pause(p,state)
             if state.get('kind')=='wrap':

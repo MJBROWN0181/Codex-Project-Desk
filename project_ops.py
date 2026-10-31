@@ -293,6 +293,8 @@ class ProjectOps:
         try:
             emit('checking')
             folder = self.folder(project)
+            from worktree_workflow import guard_release
+            guard_release(project,folder)
             actual_root = Path(self._git(folder, 'rev-parse', '--show-toplevel').stdout.strip()).resolve()
             if actual_root != folder:
                 raise ProjectOperationError('Project folder must be the repository root to publish a release.')

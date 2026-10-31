@@ -38,17 +38,18 @@ def obj(properties):
 
 STRING = {'type': 'string'}
 STRINGS = {'type': 'array', 'items': STRING}
-FINDING = obj({'title': STRING, 'severity': {'type': 'string', 'enum': ['blocker', 'high', 'medium', 'low', 'info']},
+FINDING = obj({'title': STRING, 'severity': {'type': 'string', 'enum': ['blocker', 'high', 'medium', 'low', 'info']}, 'required': {'type': 'boolean'},
                'evidence': STRING, 'recommendation': STRING, 'fixPrompt': STRING})
-CHECK = obj({'name': STRING, 'result': {'type': 'string', 'enum': ['passed', 'failed', 'not-run', 'not-applicable']}, 'evidence': STRING})
+CHECK = obj({'name': STRING, 'result': {'type': 'string', 'enum': ['passed', 'failed', 'not-run', 'not-applicable']},
+             'purpose': {'type': 'string', 'enum': ['required', 'optional', 'historical', 'not-applicable']}, 'evidence': STRING})
 REVIEW_SCHEMA = obj({'summary': STRING, 'applicable': {'type': 'boolean'},
                      'findings': {'type': 'array', 'items': FINDING},
-                     'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS})
+                     'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'readinessLimitations': STRINGS})
 PLAN_SCHEMA = obj({'summary': STRING, 'assignments': obj({role: STRING for role in ROLES})})
-FIX_SCHEMA = obj({'summary': STRING, 'changedFiles': STRINGS, 'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS})
+FIX_SCHEMA = obj({'summary': STRING, 'changedFiles': STRINGS, 'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'readinessLimitations': STRINGS})
 FINAL_SCHEMA = obj({'grade': {'type': 'string', 'enum': list('ABCDF')}, 'summary': STRING,
                     'ready': {'type': 'boolean'}, 'findings': {'type': 'array', 'items': FINDING},
-                    'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'fixPrompt': STRING,
+                    'checks': {'type': 'array', 'items': CHECK}, 'limitations': STRINGS, 'readinessLimitations': STRINGS, 'fixPrompt': STRING,
                     'rerunRecommendation': obj({'when': STRING, 'why': STRING, 'conditions': STRINGS})})
 
 
@@ -64,6 +65,18 @@ delivery/payment actions as tests. Preserve unrelated work. Do not claim tests p
 unless you ran them and saw the results; distinguish simulation from real integration,
 physical-device and authenticated checks. Include concise file/line evidence where
 possible. Do not put secrets in the report. Findings must be relevant and actionable.
+Classify every check's purpose: required means a current check needed for the stated
+project goal; historical means evidence from a previous audit, not a current failure;
+optional means supplementary coverage or discovery of an unused alternative tool;
+not-applicable means outside this project's requirements. A missing py/python3 alias
+is not a required failure when another Python runner executes the required tests.
+For each finding, required is true only for an unresolved defect or missing requirement;
+optional improvements must set required=false. Keep scope notes in limitations, but
+put only CURRENT material blockers to the stated goal in readinessLimitations.
+Do not treat an inapplicable UI, unneeded deployment, limited-but-sufficient test scope,
+unavailable optional skills or Git attribution as a material gap for a small local
+fixture that does not require them. Retain historical evidence without counting it
+as current. A fresh passing test can resolve an old missing-runner finding.
 Return only the JSON object required by the supplied schema.
 """
 
@@ -236,13 +249,14 @@ def markdown(report):
     if report.get('auditedFolders'):
         lines[6:6]=['','## Reviewed project folders','',*report['auditedFolders'],'']
     for finding in report['findings']:
-        lines.extend([f"- **{finding['severity'].upper()}: {finding['title']}**", f"  Evidence: {finding['evidence']}",
+        label = 'Optional: ' if finding.get('required') is False else ''
+        lines.extend([f"- **{finding['severity'].upper()}: {label}{finding['title']}**", f"  Evidence: {finding['evidence']}",
                       f"  Recommendation: {finding['recommendation']}"])
     if not report['findings']:
         lines.append('No remaining findings reported within the checks completed.')
     lines.extend(['', '## Checks', ''])
     for check in report['checks']:
-        lines.append(f"- {check['name']}: {check['result']} — {check['evidence']}")
+        lines.append(f"- {check['name']} ({check.get('purpose', 'required')}): {check['result']} - {check['evidence']}")
     lines.extend(['', '## Verification limits', ''])
     lines.extend('- ' + limit for limit in report['limitations'])
     if not report['limitations']:
@@ -294,21 +308,22 @@ class AuditEngine:
                                         folder, REVIEW_SCHEMA)
                 except Exception as exc:
                     answer = {'summary': 'Review not completed.', 'applicable': True, 'findings': [], 'checks': [],
-                              'limitations': [f'{role}: {str(exc)[:500]}']}
+                              'limitations': [f'{role}: {str(exc)[:500]}'], 'readinessLimitations': [f'{role}: {str(exc)[:500]}']}
                 return {'role': role, **answer}
             with ThreadPoolExecutor(max_workers=3) as pool:
                 return list(pool.map(review, assignments.items()))
 
         first = review_round(1)
-        fix = {'summary': 'Verification only; no repair pass authorized.' if verify_only else 'No repair pass needed.', 'changedFiles': [], 'checks': [], 'limitations': []}
+        fix = {'summary': 'Verification only; no repair pass authorized.' if verify_only else 'No repair pass needed.', 'changedFiles': [], 'checks': [], 'limitations': [], 'readinessLimitations': []}
         baseline = None
-        actionable = any(f['severity'] != 'info' for review in first for f in review['findings'])
+        actionable = any(f.get('required', True) and f['severity'] != 'info' for review in first for f in review['findings'])
         if actionable and not verify_only:
             try:
                 baseline = capture_baseline(self.store, folder, identity)
             except Exception as exc:
                 fix['summary'] = 'Automatic repair held because a recovery baseline could not be saved.'
                 fix['limitations'] = [str(exc)[:1000]]
+                fix['readinessLimitations'] = fix['limitations'][:]
             if baseline is not None:
                 progress({'phase': 'fixing', 'role': 'boss', 'detail': 'Boss is applying focused fixes before a second review.'})
                 try:
@@ -323,7 +338,7 @@ class AuditEngine:
                         folder, FIX_SCHEMA, sandbox='workspace-write')
                 except Exception as exc:
                     fix = {'summary': 'Repair pass did not complete; changes may be present and must be reviewed.', 'changedFiles': [],
-                           'checks': [], 'limitations': [str(exc)[:500]]}
+                           'checks': [], 'limitations': [str(exc)[:500]], 'readinessLimitations': [str(exc)[:500]]}
         second = first if verify_only else review_round(2)
         progress({'phase': 'reporting', 'role': 'boss', 'detail': 'Boss is grading the rechecked project and writing the report.'})
         evidence = {'firstReview': first, 'repair': fix, 'secondReview': second}
@@ -339,58 +354,66 @@ class AuditEngine:
         except Exception as exc:
             assessment_complete=False
             final = {'grade': 'D', 'summary': 'The final readiness assessment could not be completed.', 'ready': False,
-                     'findings': [], 'checks': [], 'limitations': [str(exc)[:500]], 'fixPrompt': 'Review the attached audit evidence, resolve the outstanding gaps and rerun the readiness review.',
+                     'findings': [], 'checks': [], 'limitations': [str(exc)[:500]], 'readinessLimitations': [str(exc)[:500]], 'fixPrompt': 'Review the attached audit evidence, resolve the outstanding gaps and rerun the readiness review.',
                      'rerunRecommendation': {'when':'After the failed assessment can complete.','why':'The audit could not establish a current readiness grade.','conditions':['Resolve the reported access, tool, or assessment failure before retrying.']}}
         # Keep reviewer failures and repair limits visible even if the synthesis omits them.
         limits = [*final['limitations'], *fix['limitations'], *(limit for review in second for limit in review['limitations'])]
+        readiness_limits = [*final['readinessLimitations'], *fix['readinessLimitations'],
+                            *(limit for review in second for limit in review['readinessLimitations'])]
         for review in second:
-            if review['applicable'] and not any(c['result'] in ('passed', 'failed') and c['evidence'].strip() for c in review['checks']):
-                limits.append(f"{review['role']}: no completed check with evidence was reported.")
+            if review['applicable'] and not any(c.get('purpose', 'required') != 'historical' and c['result'] in ('passed', 'failed') and c['evidence'].strip() for c in review['checks']):
+                missing = f"{review['role']}: no completed current check with evidence was reported."
+                limits.append(missing);readiness_limits.append(missing)
         # The boss may add a useful cross-cutting check; it cannot conceal a
         # specialist's failed or unrun check when assigning the grade.
-        known_checks = {(c['name'], c['result'], c['evidence']) for c in final['checks']}
+        known_checks = {(c['name'], c['result'], c['purpose'], c['evidence']) for c in final['checks']}
         for review in second:
             for check in review['checks']:
-                key = (check['name'], check['result'], check['evidence'])
+                key = (check['name'], check['result'], check['purpose'], check['evidence'])
                 if key not in known_checks:
                     final['checks'].append(check)
                     known_checks.add(key)
-        known_findings = {(f['title'], f['evidence']) for f in final['findings']}
+        known_findings = {(f['title'], f['evidence'], f['required']) for f in final['findings']}
         for review in second:
             for item in review['findings']:
-                key = (item['title'], item['evidence'])
+                key = (item['title'], item['evidence'], item['required'])
                 if key not in known_findings:
                     final['findings'].append(item)
                     known_findings.add(key)
-        final['limitations'] = list(dict.fromkeys(limits))
-        if final['grade'] == 'A' and (not final['ready'] or final['limitations'] or
-                any(f['severity'] != 'info' for f in final['findings']) or
-                not any(c['result'] == 'passed' and c['evidence'].strip() for c in final['checks']) or
-                any(c['result'] in ('failed', 'not-run') for c in final['checks'])):
+        final['limitations'] = list(dict.fromkeys([*limits, *readiness_limits]))
+        final['readinessLimitations'] = list(dict.fromkeys(readiness_limits))
+        required_findings = [f for f in final['findings'] if f['required']]
+        required_checks = [c for c in final['checks'] if c['purpose'] == 'required']
+        if final['grade'] == 'A' and (not final['ready'] or readiness_limits or
+                any(f['severity'] != 'info' for f in required_findings) or
+                not any(c['result'] == 'passed' and c['evidence'].strip() for c in required_checks) or
+                any(c['result'] in ('failed', 'not-run') for c in required_checks)):
             final['grade'] = 'B'
             final['ready'] = False
             final['limitations'].append('An A requires successful relevant checks and no unresolved required fixes or material verification gaps.')
         # A synthesis cannot overrule its own unresolved evidence with a letter.
-        severities = {item['severity'] for item in final['findings']}
-        cap = 'D' if severities & {'blocker', 'high'} or any(c['result'] == 'failed' for c in final['checks']) else (
+        severities = {item['severity'] for item in required_findings}
+        cap = 'D' if severities & {'blocker', 'high'} or any(c['result'] == 'failed' for c in required_checks) else (
               'C' if 'medium' in severities else 'B' if 'low' in severities else 'A')
         rank = {'A': 0, 'B': 1, 'C': 2, 'D': 3, 'F': 4}
         if rank[final['grade']] < rank[cap]:
             final['grade'] = cap
             final['limitations'].append('The grade is capped by unresolved findings or failed checks in the second review.')
         final['ready'] = final['grade'] == 'A' and final['ready']
+        if final['grade'] == 'A':
+            final['fixPrompt'] = ''
         if final['grade']!='A':
             rerun=final['rerunRecommendation']
             rerun['when']='After the remaining required fixes and verification prerequisites are complete.'
-            prerequisites=[f['recommendation'] for f in final['findings'] if f['severity']!='info' and f['recommendation'].strip()]
-            prerequisites += ['Complete '+c['name']+': '+c['evidence'] for c in final['checks'] if c['result'] in ('failed','not-run')]
-            prerequisites += final['limitations']
+            prerequisites=[f['recommendation'] for f in required_findings if f['severity']!='info' and f['recommendation'].strip()]
+            prerequisites += ['Complete '+c['name']+': '+c['evidence'] for c in required_checks if c['result'] in ('failed','not-run')]
+            prerequisites += final['readinessLimitations']
             rerun['conditions']=list(dict.fromkeys([*rerun['conditions'],*prerequisites]))
         if final['grade'] != 'A' and not final['fixPrompt'].strip():
             final['fixPrompt'] = ('Review this project against its stated goal. Verify and fix the following findings while preserving unrelated work; '
                 'do not publish, deploy or commit. Run the relevant checks again and report remaining limits.\n' + '\n'.join(
-                    '- ' + item['title'] + ': ' + item['evidence'] + '\n  ' + item['recommendation'] for item in final['findings']) +
-                '\nVerification gaps:\n' + '\n'.join('- ' + limit for limit in final['limitations']))
+                    '- ' + item['title'] + ': ' + item['evidence'] + '\n  ' + item['recommendation'] for item in required_findings) +
+                '\nVerification gaps:\n' + '\n'.join('- ' + limit for limit in final['readinessLimitations']))
         report = {'id': identity, 'projectId': project['id'], 'projectName': str(project.get('name') or 'Project'),
                   'mode': 'finish-team' if team else 'readiness', 'startedAt': started, 'completedAt': stamp(),
                   **final, 'rounds': [first] if verify_only else [first, second], 'fixes': fix, 'baseline': baseline, 'verificationOnly':verify_only,'assessmentComplete':assessment_complete}

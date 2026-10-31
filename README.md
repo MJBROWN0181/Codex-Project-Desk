@@ -4,6 +4,21 @@ Project Desk version 2.1.1 helps you track software, website, app, business, and
 
 This is a local desktop tool, not a hosted or cloud-sync service. Manual tracking needs only Python. Automated work requires compatible local Codex tooling; audit grades describe the checks performed and do not guarantee production readiness.
 
+## Project folders and handoffs
+
+New projects added through **Add project** create a named records folder under
+`Desktop/Projects`, with feature records, project audits/advisors, marketing,
+ideas, and branding. Existing code stays in its original location. Existing
+projects opt in individually through **Project folders**. New-project name
+collisions stop; explicit migration adds directories without overwriting code.
+
+Choose a project or feature in **Project folders**, enter a task, and click
+**Start new chat**. Managed sends open a fresh dated chat in the verified source
+checkout, with the latest completed handoff for the selected records folder. **Wrap up work** saves observed chat turns
+and a pass-on log after successful completion; the finished chat stays available.
+Reports retain their dates and grades. See [folder workflow and limitations](docs/project-folders.md)
+for details, including private records and feature audit scope. Existing trunk/work projects keep their feature worktrees, shared handoffs, and release gates; see [trunk/work compatibility](docs/TRUNK-RECORDS.md).
+
 ## Run locally
 
 Download or clone this repository into a folder of your choice. It contains the
@@ -184,6 +199,20 @@ their separate workflow and do not start a readiness team automatically.
 
 Grades: A ready to use; B almost done and usable; C minor fixes or required features remain; D work in progress and not ready for real use; F not working. A requires supporting checks and no material gaps. Optional improvements alone do not prevent an A. Automated review is bounded to one repair/recheck cycle; unresolved findings stay in the report.
 
+New audits classify checks as current required checks, optional checks, historical
+results, or not applicable. Only current required failures and unresolved required
+findings cap the grade; old failures remain in the evidence after fresh tests
+resolve them. Material readiness gaps stay highlighted, while optional ideas and
+general scope notes remain visible without preventing an A. Existing saved reports
+keep their original grade until a new audit runs.
+
+On Windows, a per-user Python installation must be readable and executable by
+Codex's sandbox accounts as well as by your signed-in user. If a sandboxed audit
+reports Python missing or access denied while a desktop chat can run it, check
+the installation's Windows permissions. Grant only read/execute access to the
+installed Python runtime for the configured sandbox accounts; keep audit source
+folders read-only and do not disable the sandbox or grant write access to Python.
+
 Website projects can have a configured HTTP(S) URL. If it is empty, Check site detects declared website metadata from the project, including CNAME, a homepage canonical/og:url tag, package homepage, a labelled README website link, or saved GitHub homepage metadata. It saves an unambiguous detected address into Website URL; an explicit address always wins. Unrelated documentation and repository links are not treated as the website. Up/Down shows the checked address, timestamp, and response code; checks run roughly once per minute and through Check site. This is a point-in-time check from this computer, not a global uptime guarantee.
 
 ## Drafts, focus, and latest replies
@@ -335,8 +364,13 @@ reviewed source. All-folders reviews take longer. Selected source folders carry
 through to report-based fix chats and subsequent readiness verification.
 Choosing folders does not merge branches, move files, publish, or deploy.
 
+For trunk/work repositories, broad reviews are read-only and audit-fix sends must
+target the selected feature checkout only. See [trunk/work safeguards](docs/TRUNK-RECORDS.md).
+
 `python check_scoped_audit_flow.py` exercises the complete folder-picker → audit →
 new Audit fix chat → automatic verification flow for a selected checkout and
 All folders. It verifies chat working directories, sent scope, reviewer folders,
-and displayed grades with an isolated database and mocked agents/Codex transport.
+and displayed grades for independent source folders with an isolated database,
+fixture source discovery, and mocked agents/Codex transport. The separate
+`test_worktree_workflow` suite checks trunk/work guards using real disposable Git worktrees.
 It does not send real chat messages or apply project fixes.

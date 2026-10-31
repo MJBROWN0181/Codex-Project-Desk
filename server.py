@@ -125,6 +125,8 @@ def save(p):
     from work_control import busy
     if busy(p):p['suggestion']=None
     order_activity(p)
+    from project_folders import save_reports
+    save_reports(p)
     with connect() as db:
         db.execute('INSERT OR REPLACE INTO projects VALUES (?,?)', (p['id'], json.dumps(p)))
 
@@ -335,6 +337,9 @@ def update(payload):
     if previous_status=='Unreviewed' and (action in ('accept','dismiss','log','reviewed') or
             set(payload)&{'name','kind','nextAction','blocker','repo','agency','path','websiteUrl'}):
         mark_reviewed(p)
+    if not identity and payload.get('createFolders', False):
+        from project_folders import scaffold
+        scaffold(p)
     save(p)
     return p
 
@@ -476,7 +481,7 @@ class Handler(BaseHTTPRequestHandler):
             p=next((p for p in load_projects() if p['id']==route.rsplit('/',1)[1]),None)
             if not p:return self.json_response({'error':'Project was not found.'},404)
             return self.json_response(dict(draft=p.get('actionDraft'),revision=p.get('draftRevision',0)))
-        files = {'/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
+        files = {'/project-folders.js': ('project-folders.js','text/javascript'), '/': ('index.html','text/html'), '/app.js': ('app.js','text/javascript'), '/style.css': ('style.css','text/css'),
                  '/favicon.ico': ('../assets/project-desk.ico','image/x-icon'), '/pdog-poses.png': ('../assets/pdog-poses.png','image/png'), '/theme.js': ('theme.js','text/javascript'),
                  '/setup.js': ('setup.js','text/javascript'), '/actions.js': ('actions.js','text/javascript'),'/drafts.js':('drafts.js','text/javascript'),
                  '/control.js':('control.js','text/javascript'),'/control.css':('control.css','text/css')}
@@ -506,6 +511,9 @@ class Handler(BaseHTTPRequestHandler):
                 result=setup_state()
             elif self.path == '/api/projects':
                 result = update(body)
+            elif self.path == '/api/project/folders':
+                from project_folders import handle
+                result=handle(sys.modules[__name__],body)
             elif self.path == '/api/project/register':
                 from desk_register import register
                 result=register(sys.modules[__name__],body)

@@ -75,7 +75,9 @@ def run_scoped(project,folders,action,run):
         combined['assessmentComplete']=all(r.get('assessmentComplete',True) for r in reports)
         combined['findings']=[dict(f,title=folder+' — '+f['title']) for folder,r in zip(folders,reports) for f in r.get('findings',[])]
         combined['checks']=[dict(c,name=folder+' — '+c['name']) for folder,r in zip(folders,reports) for c in r.get('checks',[])]
-        combined['fixPrompt']='\n\n'.join('Source folder: '+folder+'\n'+r.get('fixPrompt','') for folder,r in zip(folders,reports))
+        combined['fixPrompt']='\n\n'.join('Source folder: '+folder+'\n'+r['fixPrompt'] for folder,r in zip(folders,reports) if r.get('fixPrompt','').strip())
     combined['limitations']=list(dict.fromkeys(v for r in reports for v in r.get('limitations',[])))
+    if any('readinessLimitations' in r for r in reports):
+        combined['readinessLimitations']=list(dict.fromkeys(v for r in reports for v in r.get('readinessLimitations',r.get('limitations',[]))))
     combined['markdown']='\n\n'.join(r.get('markdown','') for r in reports)
     return combined

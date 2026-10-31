@@ -286,16 +286,17 @@ class DeskCodex:
 
     def send(self,body,internal=False,kind='normal'):
         p=self.project(body.get('projectId'));new_audit=kind=='audit'
-        identity=None if new_audit else thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
+        new_folder=bool(p.get('recordsRoot')) and not internal
+        identity=None if new_audit or new_folder else thread_id(body.get('threadId'));request=thread_id(body.get('requestId'))
         message=message_text(body)
         if not isinstance(body.get('preserveActionDraft',False),bool):raise ValueError('Invalid draft preservation option.')
         with self.store.MUTATION_LOCK:
             receipts=self.store.metadata('codexMessages') or {}
             if request in receipts:
                 existing=receipts[request]
-                same_target=existing.get('newAuditChat',False)==new_audit and (new_audit or existing['threadId']==identity)
+                same_target=existing.get('newAuditChat',False)==new_audit and existing.get('newFolderChat',False)==new_folder and (new_audit or new_folder or existing['threadId']==identity)
                 if new_audit and existing.get('auditSourceKey')!=body.get('auditSourceKey'):same_target=False
-                if not same_target or (existing['projectId'],existing['message'])!=(p['id'],message):
+                if not same_target or (existing['projectId'],existing.get('originalMessage',existing['message']))!=(p['id'],message):
                     raise ValueError('This send request was already used for a different message.')
                 return existing
             p=self.project(p['id'])
@@ -304,6 +305,8 @@ class DeskCodex:
                 from audit_scope import choose
                 selected_folders=choose(self.store,p,body.get('auditFolders'))
                 audit_folder=selected_folders[0] if selected_folders else str(ProjectOps(self.store).folder(p))
+                from worktree_workflow import safe_audit_fixes
+                safe_audit_fixes(p,selected_folders or [audit_folder])
                 source_key=body.get('auditSourceKey')
                 source_report=p.get('auditReport') or {}
                 if source_key is not None and (not isinstance(source_key,str) or source_key!=(source_report.get('id') or source_report.get('completedAt') or source_report.get('checkedAt'))):
@@ -319,8 +322,23 @@ class DeskCodex:
             receipt=dict(id=request,threadId=identity,projectId=p['id'],message=message,action=body['action'].strip(),reason=body.get('reason','').strip(),
                 status='working',createdAt=self.store.now(),managed=True,preserveActionDraft=body.get('preserveActionDraft',False))
             receipts[request]=receipt
+            if new_folder:
+                from project_folders import prepare
+                specification=prepare(p,message,kind,request)
+                receipt.update(specification,newFolderChat=True,originalMessage=message,recordsFeature=p.get('activeFeature',''))
+            elif internal and p.get('recordsRoot'):
+                context=p.get('recordChats',{}).get(identity)
+                if context:
+                    receipt.update(context)
+                    if context.get('sourceCheckout'):
+                        from worktree_workflow import continuation
+                        receipt['sourceCheckout']=continuation(p,context['sourceCheckout'])
+            if p.get('recordsRoot') and identity in p.get('closedRecordChats',[]):
+                raise ValueError('This chat is wrapped up. Start new work in a fresh project-folder chat.')
             if kind=='suggestion':receipt['acceptedSuggestion']=body['acceptedSuggestion']
-            if new_audit:receipt.update(newAuditChat=True,cwd=audit_folder,auditFolders=selected_folders,title='Audit',note='Creating a new Audit chat in the selected project folder.')
+            if new_audit:
+                receipt.update(newAuditChat=True,auditFolders=selected_folders,note='Creating a new audit-fix chat.')
+                if not new_folder:receipt.update(cwd=audit_folder,title='Audit')
             if new_audit and source_key:
                 if source_report.get('mode') not in ('readiness','finish-team'):
                     raise ValueError('This older report has no saved audit mode. Run a new project audit before sending fixes for automatic re-auditing.')
@@ -343,8 +361,11 @@ class DeskCodex:
     def _send_worker(self,receipt):
         identity=receipt['threadId'];request=receipt['id'];queued=False;attempted=False;accepted=False
         try:
+            if receipt.get('sourceCheckout'):
+                from worktree_workflow import verify_receipt
+                verify_receipt(self.project(receipt['projectId']),receipt)
             with Client() as client:
-                if receipt.get('newAuditChat') and not identity:
+                if (receipt.get('newAuditChat') or receipt.get('newFolderChat')) and not identity:
                     t=client.call('thread/start',dict(cwd=receipt['cwd'],ephemeral=False))['thread']
                     identity=thread_id(t['id']);receipt['threadId']=identity
                     # Persist the returned identity before naming or queueing. A
@@ -352,7 +373,7 @@ class DeskCodex:
                     with self.store.MUTATION_LOCK:
                         self._receipt(request,threadId=identity)
                         p=self.project(receipt['projectId']);p['workState']['threadId']=identity;self.store.save(p)
-                    client.call('thread/name/set',dict(threadId=identity,name='Audit'))
+                    client.call('thread/name/set',dict(threadId=identity,name=receipt.get('title') or 'Audit'))
                 t=client.read_thread(identity)
                 if t['id']!=identity:raise ValueError('Chat identity did not match.')
                 before=client.call('thread/turns/list',dict(threadId=identity,limit=5,itemsView='notLoaded'))
@@ -362,6 +383,8 @@ class DeskCodex:
                 self._receipt(request,beforeTurns=receipt['beforeTurns'])
             self._receipt(request,title=t.get('name') or 'Codex chat')
             # Every reviewed send uses the exact UUID and an argument array, never a shell command.
+            if receipt.get('sourceCheckout'):
+                verify_receipt(self.project(receipt['projectId']),receipt)
             attempted=True
             result=subprocess.run([executable(),'queue','--thread',identity,'--message',receipt['message']],
                 capture_output=True,text=True,encoding='utf-8',timeout=40,creationflags=creation_flags())
@@ -377,6 +400,8 @@ class DeskCodex:
                     at=self.store.utc_stamp(t['updatedAt']),hostId='local',connectionStatus='verified')
                 p['chats']=[c for c in p['chats'] if c['id']!=identity]+[link]
                 p['chats'].sort(key=lambda c:self.store.utc_stamp(c['at']),reverse=True)
+                if receipt.get('recordsSession'):
+                    p.setdefault('recordChats',{})[identity]={k:receipt[k] for k in ('recordsSession','recordsScope','recordsFeature','title','sourceCheckout')}
                 p['preferredChatId']=identity;p['nextAction']=receipt['action'];p['nextActionReason']=receipt['reason']
                 draft=p.get('actionDraft')
                 try:draft_message=message_text(draft) if draft else None

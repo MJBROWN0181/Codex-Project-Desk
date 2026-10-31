@@ -33,12 +33,13 @@ class AuditScopeTests(unittest.TestCase):
         calls=[]
         def run(project):
             calls.append(project['path'])
-            return dict(grade='A' if project['path']==str(self.source) else 'D',ready=project['path']==str(self.source),findings=[dict(title='Finding')],checks=[],limitations=[],fixPrompt='Fix source',markdown='Full evidence')
+            return dict(grade='A' if project['path']==str(self.source) else 'D',ready=project['path']==str(self.source),findings=[dict(title='Finding')],checks=[],limitations=['Scope note'],readinessLimitations=[] if project['path']==str(self.source) else ['Required test failed'],fixPrompt='Fix source',markdown='Full evidence')
         folders=[str(self.source),str(self.other)]
         report=audit_scope.run_scoped(self.project,folders,'finish-team',run)
         self.assertEqual(calls,folders);self.assertEqual(report['grade'],'D');self.assertFalse(report['ready'])
         self.assertEqual(report['auditedFolders'],folders);self.assertEqual(len(report['folderReports']),2)
         self.assertIn(str(self.other),report['fixPrompt']);self.assertEqual(len(report['findings']),2)
+        self.assertEqual(report['readinessLimitations'],['Required test failed'])
     def test_both_operations_reject_ambiguous_scope_before_starting(self):
         import server
         from desk_codex import DeskCodex
@@ -52,6 +53,14 @@ class AuditScopeTests(unittest.TestCase):
                     selected=service.control.control(dict(projectId=p['id'],action=action,auditFolders=[str(self.other)]))
                 self.assertEqual(selected['workState']['auditFolders'],[str(self.other)])
                 selected['workState']=dict(phase='idle');server.save(selected)
+
+    def test_ready_folders_do_not_create_a_fix_prompt_from_folder_headers(self):
+        def run(project):
+            return dict(grade='A',ready=True,findings=[],checks=[],limitations=['Scope note'],readinessLimitations=[],fixPrompt='',markdown='Passed required checks')
+        report=audit_scope.run_scoped(self.project,[str(self.source),str(self.other)],'finish-team',run)
+        self.assertEqual(report['grade'],'A')
+        self.assertEqual(report['fixPrompt'],'')
+        self.assertEqual(report['readinessLimitations'],[])
 
     def test_advisors_only_shelve_when_every_selected_folder_does(self):
         def run(project):

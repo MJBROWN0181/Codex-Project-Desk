@@ -10,11 +10,11 @@ from finish_agents import AuditEngine, CodexError, ROLES, capture_baseline, exec
 
 
 def check(result='passed'):
-    return {'name': 'Existing tests', 'result': result, 'evidence': 'python -m unittest: 8 tests completed.'}
+    return {'name': 'Existing tests', 'result': result, 'purpose': 'required', 'evidence': 'python -m unittest: 8 tests completed.'}
 
 
 def finding():
-    return {'title': 'Broken submit', 'severity': 'medium', 'evidence': 'form.py:22 loses state',
+    return {'title': 'Broken submit', 'severity': 'medium', 'required': True, 'evidence': 'form.py:22 loses state',
             'recommendation': 'Preserve input on error.', 'fixPrompt': 'Fix form.py:22 and verify submission.'}
 
 
@@ -33,14 +33,15 @@ class FakeRunner:
         if role == 'boss-plan':
             return {'summary': 'Plan', 'assignments': {r: 'Inspect actual project.' for r in ROLES}}
         if role == 'boss-fix':
-            return {'summary': 'Fixed form.', 'changedFiles': ['form.py'], 'checks': [check()], 'limitations': []}
+            return {'summary': 'Fixed form.', 'changedFiles': ['form.py'], 'checks': [check()], 'limitations': [], 'readinessLimitations': []}
         if role == 'boss-report':
             return {'grade': 'A', 'summary': 'Ready after checks.', 'ready': True, 'findings': [],
-                    'checks': [check()], 'limitations': [], 'fixPrompt': '', 'rerunRecommendation':{'when':'After material project changes.','why':'Refresh readiness evidence after behavior changes.','conditions':[]}}
+                    'checks': [check()], 'limitations': [], 'readinessLimitations': [], 'fixPrompt': '', 'rerunRecommendation':{'when':'After material project changes.','why':'Refresh readiness evidence after behavior changes.','conditions':[]}}
         return {'summary': 'Inspected.', 'applicable': True,
                 'findings': [finding()] if self.issue and 'round 1.' in kwargs['prompt'] else [],
                 'checks': [check('not-run' if self.limits else 'passed')],
-                'limitations': ['Real device not tested.'] if self.limits else []}
+                'limitations': ['Real device not tested.'] if self.limits else [],
+                'readinessLimitations': ['Real device not tested.'] if self.limits else []}
 
 
 class EngineTests(unittest.TestCase):
@@ -125,6 +126,65 @@ class EngineTests(unittest.TestCase):
         value['checks'][0]['result'] = 'probably passed'
         with self.assertRaises(CodexError):
             validate(value, REVIEW_SCHEMA)
+
+    def test_historical_failure_and_optional_discovery_do_not_poison_fresh_grade(self):
+        runner = FakeRunner()
+        def historical(**kwargs):
+            result = runner(**kwargs)
+            if kwargs['role'] == 'assessor':
+                result['checks'] += [dict(check('failed'), name='Old missing Python', purpose='historical'),
+                                     dict(check('failed'), name='Unused py launcher', purpose='optional')]
+                result['limitations'] = ['No hosted UI; this local library does not require one.']
+                result['findings'] = [dict(finding(), title='Optional extra tests', required=False)]
+            return result
+        report = self.engine(historical).run(self.project, verify_only=True)
+        self.assertEqual(report['grade'], 'A')
+        self.assertTrue(report['ready'])
+        self.assertTrue(any(c['purpose'] == 'historical' and c['result'] == 'failed' for c in report['checks']))
+        self.assertTrue(report['limitations'])
+        self.assertFalse(report['readinessLimitations'])
+        self.assertIn('(historical): failed', report['markdown'])
+        self.assertEqual(report['fixPrompt'], '')
+
+    def test_current_required_failure_still_caps_grade_even_when_boss_omits_it(self):
+        runner = FakeRunner()
+        def failed(**kwargs):
+            result = runner(**kwargs)
+            if kwargs['role'] == 'assessor':result['checks'] = [check('failed')]
+            return result
+        report = self.engine(failed).run(self.project, verify_only=True)
+        self.assertEqual(report['grade'], 'D')
+        self.assertFalse(report['ready'])
+
+    def test_ready_report_does_not_offer_no_op_repair_chat(self):
+        runner = FakeRunner()
+        def no_op_prompt(**kwargs):
+            result = runner(**kwargs)
+            if kwargs['role'] == 'boss-report':result['fixPrompt'] = 'No repairs needed; verify again.'
+            return result
+        report = self.engine(no_op_prompt).run(self.project, verify_only=True)
+        self.assertEqual(report['grade'], 'A')
+        self.assertEqual(report['fixPrompt'], '')
+
+    def test_material_gap_still_blocks_a_with_passing_tests(self):
+        runner = FakeRunner()
+        def limited(**kwargs):
+            result = runner(**kwargs)
+            if kwargs['role'] == 'assessor':result['readinessLimitations'] = ['Required sign-in flow unverified.']
+            return result
+        report = self.engine(limited).run(self.project, verify_only=True)
+        self.assertEqual(report['grade'], 'B')
+        self.assertIn('Required sign-in flow unverified.', report['rerunRecommendation']['conditions'])
+        self.assertIn('Required sign-in flow unverified.', report['markdown'])
+
+    def test_synthesis_cannot_relabel_required_failure_as_historical(self):
+        runner = FakeRunner()
+        def relabeled(**kwargs):
+            result = runner(**kwargs)
+            if kwargs['role'] == 'assessor':result['checks'] = [check('failed')]
+            if kwargs['role'] == 'boss-report':result['checks'] = [dict(check('failed'), purpose='historical')]
+            return result
+        self.assertEqual(self.engine(relabeled).run(self.project, verify_only=True)['grade'], 'D')
 
     @patch('finish_agents.execute_cli')
     @patch('finish_agents.executable', return_value='codex.exe')

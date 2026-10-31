@@ -1,4 +1,4 @@
-"""Full browser/HTTP audit -> new fix chat -> scoped verification, mocked agents/CLI."""
+"""Browser/HTTP scoped audit flow; source discovery, agents and native CLI are fixtures."""
 import copy,json,re,subprocess,tempfile,threading,time,uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,9 +23,6 @@ class Harness:
             findings=[] if grade=='A' else [dict(title='Fixture issue',severity='high' if grade=='D' else 'medium' if grade=='C' else 'low',evidence=folder+'/source.txt:1',recommendation='Verify the fixture fix.',fixPrompt='Fix the fixture issue.')],
             checks=[dict(name='Fixture check',result='passed',evidence=folder+'/source.txt was inspected by the fixture')],limitations=[],fixPrompt='' if grade=='A' else 'Fix the fixture issue in '+folder+'.',rerunRecommendation=dict(when='After fixture prerequisites are met.',why='Fresh verification is needed.',conditions=[]),markdown='Fixture reviewer evidence: '+folder)
     def command(self,args,**kwargs):
-        if args[:4]==['git','worktree','list','--porcelain']:
-            output=f'worktree {self.older.as_posix()}\nbranch refs/heads/older\n\nworktree {self.candidate.as_posix()}\nbranch refs/heads/candidate\n'
-            return subprocess.CompletedProcess(args,0,output,'')
         assert len(args)>1 and args[1]=='queue',args
         identity=args[args.index('--thread')+1];message=args[args.index('--message')+1];assert identity in self.threads
         self.queues.append(dict(threadId=identity,message=message))
@@ -47,12 +44,15 @@ class Harness:
 
 with tempfile.TemporaryDirectory() as folder:
     root=Path(folder);older=root/'older-checkout';candidate=root/'candidate-checkout'
-    for path in [older,candidate]:path.mkdir();(path/'source.txt').write_text('Unchanged fixture source.');(path/'.git').mkdir()
+    for path in [older,candidate]:path.mkdir();(path/'source.txt').write_text('Unchanged fixture source.')
+    # This flow covers independent source folders, not guarded trunk/work repos.
+    # Real disposable Git worktree guards are covered by test_worktree_workflow.
+    options=[dict(path=str(path),label=path.name,configured=path==older,branch='') for path in [older,candidate]]
     server.DATA=root/'desk-data';server.DATA.mkdir();server.DB=server.DATA/'flow.sqlite3';server.initialize()
     harness=Harness(root,older,candidate);service=DeskCodex(server);server.CODEX_SERVICE=service
     http=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);worker=threading.Thread(target=http.serve_forever,daemon=True);worker.start();results=[]
     try:
-        with patch('audit_scope.subprocess.run',side_effect=harness.command),patch('desk_codex.Client',side_effect=harness.client),patch('desk_codex.executable',return_value='mock-codex'),patch('desk_codex.local_open',side_effect=harness.opened.append),patch('finish_agents.AuditEngine.run',side_effect=harness.run_agent),patch('work_control.threading',SimpleNamespace(Thread=harness.schedule)):
+        with patch('audit_scope.discover',return_value=options),patch('desk_codex.subprocess.run',side_effect=harness.command),patch('desk_codex.Client',side_effect=harness.client),patch('desk_codex.executable',return_value='mock-codex'),patch('desk_codex.local_open',side_effect=harness.opened.append),patch('finish_agents.AuditEngine.run',side_effect=harness.run_agent),patch('work_control.threading',SimpleNamespace(Thread=harness.schedule)):
             with sync_playwright() as tool:
                 browser=tool.chromium.launch(headless=True);page=browser.new_page(viewport=dict(width=1200,height=1000));errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
                 for name,choice,expected,initial_grade in [('Selected checkout','1',[str(candidate)],'C'),('All folders','all',[str(older),str(candidate)],'D')]:
